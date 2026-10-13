@@ -34,6 +34,7 @@ Node 22 (`.nvmrc`), pnpm 10, `just` (run `just` alone to list recipes).
 | Build an image                     | `just image api` (or `worker`, `console`)                                     |
 | Load test (after `just infra-up`)  | `just load-storm` (k6, 2k req/s; reports in `infra/load/results/`)            |
 | README results table               | `just readme` (after `just load-storm` or `just eval`)                        |
+| README demo GIF (needs vhs)        | `just demo-gif` (after `just infra-up`; `docs/demo/`)                         |
 
 ## Layout
 

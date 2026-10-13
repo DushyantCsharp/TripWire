@@ -13,6 +13,16 @@ load test, CI and release. Not built yet: the GraphQL resolvers for incidents, r
 approvals (the schema defines them), the console's views (it shows the api's status), approving and
 executing actions, and the golden set's capture.
 
+## Demo
+
+![An alert storm against one Tripwire worker: the api sheds with 503 and Retry-After, the sender retries with the same Idempotency-Key until every delivery gets in, and 6,000 alerts become 2 triaged incidents](docs/demo/demo.gif)
+
+6,000 alert deliveries in a few seconds against one worker. Past the high-water mark (300 waiting
+in this demo) the api answers 503 with a `Retry-After` of a few seconds; the sender retries with
+the same `Idempotency-Key`, and every delivery gets in. Dedupe then turns the 6,000 alerts, two
+alert rules firing on 60 pods each, into 2 incidents, each triaged here by the model-free baseline.
+Re-record it with `just demo-gif` ([`docs/demo/`](docs/demo/)).
+
 ## How it works
 
 ```mermaid

@@ -126,6 +126,10 @@ load-storm:
 readme:
     node scripts/readme-results.mjs
 
+# Re-record README's demo GIF (docs/demo/demo.tape; needs `just infra-up` and vhs)
+demo-gif:
+    vhs docs/demo/demo.tape
+
 # Build an image for this machine: `just image api|worker|console` (release.yml builds both architectures)
 image target='api':
     docker buildx build --target {{ target }} -t tripwire-{{ target }}:local --load .
