@@ -1,0 +1,7 @@
+{
+  "extends": "@tripwire/tsconfig/node.json",
+  "compilerOptions": {
+    // generate.ts runs on plain Node (type stripping), which needs real `.ts` specifiers.
+    "allowImportingTsExtensions": true
+  }
+}

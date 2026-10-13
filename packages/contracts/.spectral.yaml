@@ -1,0 +1,67 @@
+# Spectral's OpenAPI rules plus Tripwire's API conventions. Run by `pnpm lint` in this package.
+extends: [[spectral:oas, recommended]]
+
+rules:
+  # Private project: no license to declare.
+  info-license: off
+  license-url: off
+
+  tripwire-versioned-paths:
+    description: Every REST path lives under /v1.
+    severity: error
+    given: $.paths
+    then:
+      field: '@key'
+      function: pattern
+      functionOptions:
+        match: '^/v1/'
+
+  tripwire-problem-json-errors:
+    description: Error responses (4xx, 5xx, default) are RFC 9457 application/problem+json and nothing else.
+    message: '{{path}} must use application/problem+json as its only media type.'
+    severity: error
+    given: $.paths[*][*].responses[?(@property.match(/^([45]\d\d|default)$/))]
+    then:
+      field: content
+      function: schema
+      functionOptions:
+        schema:
+          type: object
+          required: [application/problem+json]
+          additionalProperties: false
+          properties:
+            application/problem+json: {}
+
+  tripwire-retry-after-on-503:
+    description: A 503 tells clients when to retry.
+    severity: error
+    given: $.paths[*][*].responses['503']
+    then:
+      field: headers.Retry-After
+      function: truthy
+
+  tripwire-webhook-headers:
+    description: Webhooks require both the HMAC signature and an Idempotency-Key.
+    message: '{{path}} must require the X-Tripwire-Signature and Idempotency-Key headers.'
+    severity: error
+    given: $.paths[?(@property.startsWith('/v1/webhooks/'))].post.parameters
+    then:
+      function: schema
+      functionOptions:
+        schema:
+          type: array
+          allOf:
+            - contains:
+                type: object
+                required: [name, in, required]
+                properties:
+                  name: { const: X-Tripwire-Signature }
+                  in: { const: header }
+                  required: { const: true }
+            - contains:
+                type: object
+                required: [name, in, required]
+                properties:
+                  name: { const: Idempotency-Key }
+                  in: { const: header }
+                  required: { const: true }

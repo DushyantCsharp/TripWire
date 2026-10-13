@@ -1,0 +1,42 @@
+{
+  "name": "@tripwire/agent",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "@tripwire/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./testing": {
+      "@tripwire/source": "./src/testing/index.ts"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.build.json",
+    "typecheck": "tsc",
+    "lint": "eslint .",
+    "test": "NODE_OPTIONS='--experimental-vm-modules --disable-warning=ExperimentalWarning' jest",
+    "clean": "rm -rf dist .turbo"
+  },
+  "devDependencies": {
+    "@jest/globals": "catalog:",
+    "@tripwire/config": "workspace:*",
+    "@tripwire/eslint-config": "workspace:*",
+    "@tripwire/jest-config": "workspace:*",
+    "@tripwire/tsconfig": "workspace:*",
+    "@types/node": "catalog:",
+    "eslint": "catalog:",
+    "jest": "catalog:",
+    "typescript": "catalog:"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "~0.127.0",
+    "@tripwire/result": "workspace:*",
+    "zod": "catalog:"
+  }
+}

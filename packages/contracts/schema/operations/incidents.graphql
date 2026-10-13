@@ -1,0 +1,130 @@
+fragment IncidentSummary on Incident {
+  id
+  title
+  status
+  severity
+  service
+  alertCount
+  firstSeenAt
+  lastSeenAt
+}
+
+fragment EvidenceFields on Evidence {
+  kind
+  sourceId
+  excerpt
+  available
+  unavailableReason
+  url
+}
+
+fragment IncidentDetail on Incident {
+  ...IncidentSummary
+  triage {
+    __typename
+    ... on TriageReport {
+      id
+      summary
+      confidence
+      complete
+      stopReason
+      model
+      startedAt
+      completedAt
+      hypotheses {
+        rank
+        title
+        explanation
+        confidence
+        suspect
+        faultClass
+        evidence {
+          ...EvidenceFields
+        }
+      }
+      unavailableEvidence {
+        ...EvidenceFields
+      }
+      usage {
+        inputTokens
+        outputTokens
+        toolCalls
+      }
+    }
+    ... on TriageFailed {
+      id
+      reason
+      message
+      startedAt
+      failedAt
+      usage {
+        inputTokens
+        outputTokens
+        toolCalls
+      }
+    }
+  }
+  proposedActions {
+    ...ProposedActionFields
+  }
+}
+
+query IncidentList($first: Int, $after: String, $status: [IncidentStatus!]) {
+  incidents(first: $first, after: $after, status: $status) {
+    edges {
+      cursor
+      node {
+        ...IncidentSummary
+      }
+    }
+    pageInfo {
+      hasNextPage
+      endCursor
+    }
+  }
+}
+
+query Incident($id: ID!) {
+  incident(id: $id) {
+    ...IncidentDetail
+  }
+}
+
+query IncidentAlerts($id: ID!, $first: Int, $after: String) {
+  incident(id: $id) {
+    id
+    alerts(first: $first, after: $after) {
+      edges {
+        cursor
+        node {
+          id
+          source
+          name
+          status
+          severity
+          service
+          summary
+          fingerprint
+          labels {
+            name
+            value
+          }
+          startsAt
+          endsAt
+          receivedAt
+          sourceUrl
+        }
+      }
+      pageInfo {
+        hasNextPage
+        endCursor
+      }
+    }
+  }
+}
+
+subscription IncidentUpdated($id: ID!) {
+  incidentUpdated(id: $id) {
+    ...IncidentDetail
+  }
+}

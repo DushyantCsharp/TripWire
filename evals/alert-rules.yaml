@@ -1,0 +1,136 @@
+# Alert rules for the OpenTelemetry Demo, evaluated by its Prometheus (mounted by
+# infra/otel-demo/compose.tripwire.yaml). The golden-set capture turns what fires into the
+# Alertmanager webhooks Tripwire ingests. Each alert names its service in a `service` label, which
+# Tripwire's normaliser reads. Span and JVM metrics arrive every 60-75s and the demo's load is
+# light (about a checkout a minute), so their rates use 5m windows: rate() needs two samples, and
+# a 2m window often holds one. Container metrics arrive every ~13s.
+groups:
+  - name: tripwire-demo-requests
+    interval: 30s
+    rules:
+      # A service failing a share of the requests it serves.
+      - alert: HighErrorRate
+        expr: |
+          (
+            sum by (service_name) (rate(traces_span_metrics_calls_total{span_kind="SPAN_KIND_SERVER", status_code="STATUS_CODE_ERROR"}[5m]))
+            /
+            sum by (service_name) (rate(traces_span_metrics_calls_total{span_kind="SPAN_KIND_SERVER"}[5m]))
+          ) > 0.05
+          and
+          sum by (service_name) (rate(traces_span_metrics_calls_total{span_kind="SPAN_KIND_SERVER", status_code="STATUS_CODE_ERROR"}[5m])) > 0.01
+        for: 1m
+        labels:
+          severity: critical
+          service: '{{ $labels.service_name }}'
+        annotations:
+          summary: '{{ $labels.service_name }} is failing {{ $value | humanizePercentage }} of the requests it serves'
+
+      # A service whose calls to others fail (the callee may be down or unreachable). Not the load
+      # generator: it stands in for users, whose failures show as the server's own errors, and in
+      # demo 3.1.0 it also calls an AI agent service the demo only starts with compose.agent.yaml.
+      - alert: DependencyErrors
+        expr: |
+          sum by (service_name) (rate(traces_span_metrics_calls_total{service_name!="load-generator", span_kind=~"SPAN_KIND_CLIENT|SPAN_KIND_PRODUCER", status_code="STATUS_CODE_ERROR"}[5m])) > 0.01
+        for: 1m
+        labels:
+          severity: warning
+          service: '{{ $labels.service_name }}'
+        annotations:
+          summary: '{{ $labels.service_name }} sees {{ $value | humanize }} failed outbound calls per second'
+
+      # p95 latency at more than twice its own recent level, and slow in absolute terms.
+      - alert: HighLatency
+        expr: |
+          (
+            histogram_quantile(0.95, sum by (le, service_name) (rate(traces_span_metrics_duration_milliseconds_bucket{span_kind="SPAN_KIND_SERVER"}[5m])))
+            >
+            2 * histogram_quantile(0.95, sum by (le, service_name) (rate(traces_span_metrics_duration_milliseconds_bucket{span_kind="SPAN_KIND_SERVER"}[30m] offset 20m)))
+          )
+          and
+          histogram_quantile(0.95, sum by (le, service_name) (rate(traces_span_metrics_duration_milliseconds_bucket{span_kind="SPAN_KIND_SERVER"}[5m]))) > 250
+          # Only against a full reference window (about 30 samples): just after the demo starts it
+          # holds a minute of warm-up, and anything looks slow next to that.
+          and on (service_name)
+          max by (service_name) (count_over_time(traces_span_metrics_duration_milliseconds_count{span_kind="SPAN_KIND_SERVER"}[30m] offset 20m)) >= 20
+        for: 2m
+        labels:
+          severity: warning
+          service: '{{ $labels.service_name }}'
+        annotations:
+          summary: '{{ $labels.service_name }} p95 latency is {{ $value | humanize }}ms'
+
+      # Requests at three times their recent level.
+      - alert: TrafficSurge
+        expr: |
+          sum by (service_name) (rate(traces_span_metrics_calls_total{span_kind="SPAN_KIND_SERVER"}[5m]))
+          >
+          3 * sum by (service_name) (rate(traces_span_metrics_calls_total{span_kind="SPAN_KIND_SERVER"}[30m] offset 20m))
+          and
+          sum by (service_name) (rate(traces_span_metrics_calls_total{span_kind="SPAN_KIND_SERVER"}[5m])) > 1
+          # Only against a full reference window, as for HighLatency.
+          and on (service_name)
+          max by (service_name) (count_over_time(traces_span_metrics_calls_total{span_kind="SPAN_KIND_SERVER"}[30m] offset 20m)) >= 20
+        for: 1m
+        labels:
+          severity: warning
+          service: '{{ $labels.service_name }}'
+        annotations:
+          summary: '{{ $labels.service_name }} is serving {{ $value | humanize }} requests per second'
+
+  - name: tripwire-demo-resources
+    interval: 30s
+    rules:
+      # Memory that keeps climbing (from the collector's docker_stats receiver). Not the demo's
+      # telemetry backends: Jaeger keeps traces in memory and grows for its first hour.
+      - alert: MemoryGrowing
+        expr: |
+          deriv(container_memory_usage_total_bytes{container_name!~"jaeger|opensearch|prometheus|grafana|otel-collector"}[10m]) > 100000
+          and
+          container_memory_usage_total_bytes > 1.5 * container_memory_usage_total_bytes offset 20m
+          # Not while the reference is warm-up (about 140 samples in a full window): a JVM grows
+          # for its first half hour.
+          and
+          count_over_time(container_memory_usage_total_bytes[30m] offset 20m) >= 100
+        for: 2m
+        labels:
+          severity: warning
+          service: '{{ $labels.container_name }}'
+        annotations:
+          summary: '{{ $labels.container_name }} memory is growing by {{ $value | humanize1024 }}B/s'
+
+      # In cores, from the cgroup CPU counter. The receiver's container_cpu_utilization_ratio isn't
+      # a 0-1 share of anything here (it read 2.8 for a container using 0.16 cores). Not the load
+      # generator, which idles at 0.6-0.8 cores, nor the telemetry backends.
+      - alert: HighCpu
+        expr: |
+          sum by (container_name) (rate(container_cpu_usage_nanoseconds_total{container_name!~"load-generator|jaeger|opensearch|prometheus|grafana|otel-collector"}[2m])) / 1e9 > 0.8
+          or
+          sum by (service_name) (rate(jvm_cpu_time_seconds_total[5m])) > 0.8
+        for: 2m
+        labels:
+          severity: warning
+          service: '{{ with $labels.container_name }}{{ . }}{{ else }}{{ $labels.service_name }}{{ end }}'
+        annotations:
+          summary: 'CPU at {{ $value | humanizePercentage }}'
+
+      - alert: GcPressure
+        expr: sum by (service_name) (rate(jvm_gc_duration_seconds_sum[5m])) > 0.05
+        for: 2m
+        labels:
+          severity: warning
+          service: '{{ $labels.service_name }}'
+        annotations:
+          summary: '{{ $labels.service_name }} spends {{ $value | humanizePercentage }} of its time collecting garbage'
+
+  - name: tripwire-demo-queues
+    interval: 30s
+    rules:
+      # Prometheus 3 suffixes the receiver's unit-"1" gauge with _ratio: it is a count of messages.
+      - alert: ConsumerLag
+        expr: sum by (group) (kafka_consumer_group_lag_ratio) > 500
+        for: 2m
+        labels:
+          severity: warning
+          service: kafka
+        annotations:
+          summary: 'consumer group {{ $labels.group }} is {{ $value | humanize }} messages behind'

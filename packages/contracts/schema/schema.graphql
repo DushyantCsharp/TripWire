@@ -1,0 +1,407 @@
+"""
+RFC 3339 timestamp in UTC, e.g. 2026-10-11T18:05:48.780Z.
+"""
+scalar DateTime
+
+"""
+Any JSON value.
+"""
+scalar JSON
+
+"""
+An object with a globally unique, opaque, type-prefixed id (inc_…, alr_…, act_…), shared with the
+REST API.
+"""
+interface Node {
+  id: ID!
+}
+
+"""
+Relay cursor pagination. Tripwire paginates forward only (first/after, at most 100 per page), so
+hasPreviousPage is always false.
+"""
+type PageInfo {
+  hasNextPage: Boolean!
+  hasPreviousPage: Boolean!
+  startCursor: String
+  endCursor: String
+}
+
+type Query {
+  "Liveness probe. Always returns 'pong'."
+  ping: String!
+  node(id: ID!): Node
+  incident(id: ID!): Incident
+  "Incidents, most recently active first."
+  incidents(first: Int = 20, after: String, status: [IncidentStatus!]): IncidentConnection!
+  "Triage jobs that failed for good, newest first (at most 100). Nothing redrives them on its own."
+  deadLetteredTriageJobs(first: Int = 50): [DeadLetteredTriageJob!]!
+}
+
+type Mutation {
+  """
+  Approve a pending action. This records the decision only; the executor re-checks the approval
+  in the same transaction that runs the action.
+  """
+  approveAction(input: ApproveActionInput!): ActionDecisionResult!
+  rejectAction(input: RejectActionInput!): ActionDecisionResult!
+  """
+  Re-enqueues a dead-lettered triage job as a fresh job with a full set of attempts, and removes
+  the dead-letter entry. The only way out of the dead-letter queue: nothing redrives automatically.
+  """
+  redriveTriageJob(input: RedriveTriageJobInput!): RedriveTriageJobResult!
+}
+
+type Subscription {
+  """
+  Emits the incident whenever it changes: alerts added, status, triage result, actions proposed
+  or decided.
+  """
+  incidentUpdated(id: ID!): Incident!
+}
+
+enum Severity {
+  CRITICAL
+  WARNING
+  INFO
+}
+
+enum IncidentStatus {
+  "Collecting alerts; triage has not started."
+  OPEN
+  TRIAGING
+  TRIAGED
+  RESOLVED
+}
+
+type Incident implements Node {
+  id: ID!
+  title: String!
+  status: IncidentStatus!
+  severity: Severity!
+  "Primary affected service, when the alerts agree on one."
+  service: String
+  alertCount: Int!
+  firstSeenAt: DateTime!
+  lastSeenAt: DateTime!
+  alerts(first: Int = 50, after: String): AlertConnection!
+  "Outcome of the latest triage run. Null until the first run finishes."
+  triage: TriageResult
+  proposedActions: [ProposedAction!]!
+}
+
+type IncidentConnection {
+  edges: [IncidentEdge!]!
+  pageInfo: PageInfo!
+}
+
+type IncidentEdge {
+  cursor: String!
+  node: Incident!
+}
+
+enum AlertSource {
+  ALERTMANAGER
+  GENERIC
+}
+
+enum AlertStatus {
+  FIRING
+  RESOLVED
+}
+
+type Alert implements Node {
+  id: ID!
+  "Null while the alert is still being clustered."
+  incident: Incident
+  source: AlertSource!
+  name: String!
+  status: AlertStatus!
+  severity: Severity!
+  service: String
+  "Text from the sender. Untrusted: render as plain text."
+  summary: String
+  labels: [Label!]!
+  "Stable identity used for deduplication."
+  fingerprint: String!
+  startsAt: DateTime!
+  endsAt: DateTime
+  receivedAt: DateTime!
+  "Link to the alert in its source system."
+  sourceUrl: String
+}
+
+type Label {
+  name: String!
+  value: String!
+}
+
+type AlertConnection {
+  edges: [AlertEdge!]!
+  pageInfo: PageInfo!
+}
+
+type AlertEdge {
+  cursor: String!
+  node: Alert!
+}
+
+union TriageResult = TriageReport | TriageFailed
+
+type TriageReport implements Node {
+  id: ID!
+  incident: Incident!
+  summary: String!
+  "Ranked best first: hypotheses[0] has rank 1."
+  hypotheses: [Hypothesis!]!
+  "Evidence the agent tried and failed to gather. Each entry has available: false."
+  unavailableEvidence: [Evidence!]!
+  "0–1, already lowered to account for unavailableEvidence."
+  confidence: Float!
+  """
+  False when the run was cut short: a limit was breached (tool calls, tokens, wall clock), the
+  model's report stayed invalid after a repair, or the model declined. stopReason says which.
+  """
+  complete: Boolean!
+  stopReason: TriageStopReason!
+  usage: TriageUsage!
+  model: String!
+  startedAt: DateTime!
+  completedAt: DateTime!
+}
+
+"Why a triage run ended. Anything but REPORT_SUBMITTED means the report is partial."
+enum TriageStopReason {
+  REPORT_SUBMITTED
+  TOOL_CALL_LIMIT
+  INPUT_TOKEN_BUDGET
+  OUTPUT_TOKEN_BUDGET
+  WALL_CLOCK
+  INVALID_OUTPUT
+  REFUSAL
+}
+
+type Hypothesis {
+  rank: Int!
+  title: String!
+  explanation: String!
+  "0–1."
+  confidence: Float!
+  "Service or component suspected as the root cause."
+  suspect: String
+  "The kind of failure blamed. Null when the hypothesis was ranked from alert labels, not by the model."
+  faultClass: FaultClass
+  evidence: [Evidence!]!
+}
+
+enum FaultClass {
+  APPLICATION_ERROR
+  UNAVAILABLE
+  LATENCY
+  CPU_SATURATION
+  MEMORY_LEAK
+  GC_PRESSURE
+  QUEUE_BACKLOG
+  TRAFFIC_SURGE
+  LOCK_CONTENTION
+  OTHER
+}
+
+enum EvidenceKind {
+  LOG
+  TRACE
+  METRIC
+  DEPLOY
+  RUNBOOK
+}
+
+type Evidence {
+  kind: EvidenceKind!
+  """
+  Identifier in the source system: log record id, trace id, PromQL query, deploy id or runbook
+  path. For unavailable evidence, the query that was attempted.
+  """
+  sourceId: String!
+  "Verbatim excerpt supporting the claim. Untrusted: render as plain text. Null when unavailable."
+  excerpt: String
+  "False when the backend could not be queried; the conclusion was reached without this evidence."
+  available: Boolean!
+  "Why the evidence was unavailable, e.g. 'trace backend timed out after 3 attempts'."
+  unavailableReason: String
+  "Deep link into Jaeger, Grafana or the log viewer."
+  url: String
+}
+
+type TriageUsage {
+  inputTokens: Int!
+  outputTokens: Int!
+  toolCalls: Int!
+}
+
+enum TriageFailureReason {
+  "The per-incident token budget ran out before a report was produced."
+  TOKEN_BUDGET_EXHAUSTED
+  TOOL_CALL_LIMIT_REACHED
+  "The model provider kept failing after retries."
+  MODEL_UNAVAILABLE
+  TIMED_OUT
+  "The model's output, or the request built for it, failed validation."
+  INVALID_OUTPUT
+  "The model provider rejected the request (a 4xx other than 408 or 429)."
+  REQUEST_REJECTED
+  "A bug or a crash rather than an expected failure."
+  INTERNAL_ERROR
+}
+
+type TriageFailed implements Node {
+  id: ID!
+  incident: Incident!
+  reason: TriageFailureReason!
+  message: String!
+  usage: TriageUsage!
+  startedAt: DateTime!
+  failedAt: DateTime!
+}
+
+enum ActionKind {
+  ROLLBACK
+  SCALE
+  PAGE
+}
+
+enum ActionStatus {
+  PENDING_APPROVAL
+  "Approved; waiting for the executor."
+  APPROVED
+  REJECTED
+  "The approval expired before the action ran. Needs a fresh approval."
+  EXPIRED
+  EXECUTED
+  EXECUTION_FAILED
+}
+
+"""
+A write action proposed by the agent. It never runs without an approval bound to its payloadHash.
+"""
+type ProposedAction implements Node {
+  id: ID!
+  incident: Incident!
+  kind: ActionKind!
+  "Exactly what will happen, e.g. 'Roll back payment from 2.4.1 to 2.4.0'."
+  summary: String!
+  "Why the agent proposes it. Model output: untrusted."
+  rationale: String!
+  "The canonical payload the executor will run. payloadHash is computed over exactly this."
+  payload: JSON!
+  "Hex SHA-256 of the canonical payload."
+  payloadHash: String!
+  status: ActionStatus!
+  "The human decision, once made."
+  approval: Approval
+  proposedAt: DateTime!
+}
+
+enum ApprovalDecision {
+  APPROVED
+  REJECTED
+}
+
+type Approval implements Node {
+  id: ID!
+  action: ProposedAction!
+  decision: ApprovalDecision!
+  reason: String!
+  "Authenticated identity of the human who decided."
+  decidedBy: String!
+  decidedAt: DateTime!
+  "The payload hash decided on. Execution requires the action's payload to still match it."
+  payloadHash: String!
+  "An approved action must run before this time. Null for rejections."
+  expiresAt: DateTime
+  "When the executor consumed this approval. Approvals are single-use."
+  consumedAt: DateTime
+}
+
+input ApproveActionInput {
+  actionId: ID!
+  "The payloadHash you reviewed. A mismatch means the action changed, and the approval is refused."
+  payloadHash: String!
+  "Required: non-blank, at most 2000 characters."
+  reason: String!
+}
+
+input RejectActionInput {
+  actionId: ID!
+  "Required: non-blank, at most 2000 characters."
+  reason: String!
+}
+
+type ActionDecided {
+  action: ProposedAction!
+  approval: Approval!
+}
+
+enum ActionDecisionErrorCode {
+  ACTION_NOT_FOUND
+  "Already approved, rejected, expired or executed."
+  ACTION_NOT_PENDING
+  PAYLOAD_HASH_MISMATCH
+  REASON_REQUIRED
+}
+
+"""
+An expected refusal, returned as data rather than as a GraphQL error.
+"""
+type ActionDecisionError {
+  code: ActionDecisionErrorCode!
+  message: String!
+}
+
+union ActionDecisionResult = ActionDecided | ActionDecisionError
+
+"""
+A triage job that failed for good and was moved to the triage-dlq queue.
+"""
+type DeadLetteredTriageJob {
+  "The dead-letter entry's id; pass it to redriveTriageJob."
+  id: ID!
+  incidentId: ID!
+  "RetryableError (attempts exhausted), FatalError (not worth retrying) or StalledJobError."
+  errorClass: String!
+  failedReason: String!
+  lastStack: String
+  attempts: [TriageAttempt!]!
+  failedAt: DateTime!
+}
+
+type TriageAttempt {
+  attempt: Int!
+  errorClass: String!
+  message: String!
+  at: DateTime!
+}
+
+input RedriveTriageJobInput {
+  "A DeadLetteredTriageJob id."
+  id: ID!
+}
+
+type TriageJobRedriven {
+  "The new triage job."
+  jobId: ID!
+  incidentId: ID!
+}
+
+enum RedriveErrorCode {
+  DEAD_LETTER_NOT_FOUND
+}
+
+"""
+An expected refusal, returned as data rather than as a GraphQL error.
+"""
+type RedriveError {
+  code: RedriveErrorCode!
+  message: String!
+}
+
+union RedriveTriageJobResult = TriageJobRedriven | RedriveError

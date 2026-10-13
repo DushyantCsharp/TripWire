@@ -1,0 +1,61 @@
+{
+  "name": "@tripwire/db",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "@tripwire/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./migrator": {
+      "@tripwire/source": "./src/migrator.ts",
+      "types": "./dist/migrator.d.ts",
+      "default": "./dist/migrator.js"
+    },
+    "./testing": {
+      "@tripwire/source": "./src/testing/index.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "migrations"
+  ],
+  "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.build.json",
+    "typecheck": "tsc",
+    "lint": "eslint . && drizzle-kit check",
+    "test": "NODE_OPTIONS='--experimental-vm-modules --disable-warning=ExperimentalWarning' jest",
+    "test:integration": "NODE_OPTIONS='--experimental-vm-modules --disable-warning=ExperimentalWarning' jest --config jest.integration.config.js",
+    "clean": "rm -rf dist .turbo",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "tsx --env-file-if-exists=../../.env src/cli.ts up",
+    "db:rollback": "tsx --env-file-if-exists=../../.env src/cli.ts down",
+    "db:status": "tsx --env-file-if-exists=../../.env src/cli.ts status",
+    "db:seed": "tsx --env-file-if-exists=../../.env src/cli.ts seed",
+    "db:backfill": "tsx --env-file-if-exists=../../.env src/cli.ts backfill"
+  },
+  "dependencies": {
+    "@tripwire/config": "workspace:*",
+    "@tripwire/result": "workspace:*",
+    "drizzle-orm": "^0.45.4",
+    "pg": "^8.23.1",
+    "uuid": "^14.0.3",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@faker-js/faker": "^10.6.0",
+    "@jest/globals": "catalog:",
+    "@tripwire/eslint-config": "workspace:*",
+    "@tripwire/jest-config": "workspace:*",
+    "@tripwire/tsconfig": "workspace:*",
+    "@types/node": "catalog:",
+    "@types/pg": "^8.23.1",
+    "drizzle-kit": "^0.31.11",
+    "eslint": "catalog:",
+    "jest": "catalog:",
+    "tsx": "catalog:",
+    "typescript": "catalog:"
+  }
+}

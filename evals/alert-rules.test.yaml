@@ -1,0 +1,53 @@
+# Unit tests for alert-rules.yaml, at the demo's real cadence: span metrics every 75s and about a
+# checkout a minute. Run: promtool test rules evals/alert-rules.test.yaml (ci runs it in Docker).
+rule_files:
+  - alert-rules.yaml
+
+evaluation_interval: 30s
+
+tests:
+  # paymentFailure at 80%: one failed charge per sample, a quarter of one successful. With 2m
+  # windows this never held long enough to fire (the pilot's first case).
+  - interval: 75s
+    input_series:
+      - series: 'traces_span_metrics_calls_total{service_name="payment", span_kind="SPAN_KIND_SERVER", status_code="STATUS_CODE_ERROR"}'
+        values: '0+1x20'
+      - series: 'traces_span_metrics_calls_total{service_name="payment", span_kind="SPAN_KIND_SERVER", status_code="STATUS_CODE_UNSET"}'
+        values: '0+0.25x20'
+      - series: 'traces_span_metrics_calls_total{service_name="checkout", span_kind="SPAN_KIND_CLIENT", status_code="STATUS_CODE_ERROR"}'
+        values: '0+1x20'
+      # The load generator's failing calls to the AI agent the demo doesn't start: never alerted on.
+      - series: 'traces_span_metrics_calls_total{service_name="load-generator", span_kind="SPAN_KIND_CLIENT", status_code="STATUS_CODE_ERROR"}'
+        values: '0+5x20'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: HighErrorRate
+        exp_alerts:
+          - exp_labels:
+              service_name: payment
+              service: payment
+              severity: critical
+            exp_annotations:
+              summary: payment is failing 80% of the requests it serves
+      - eval_time: 20m
+        alertname: DependencyErrors
+        exp_alerts:
+          - exp_labels:
+              service_name: checkout
+              service: checkout
+              severity: warning
+            exp_annotations:
+              summary: checkout sees 13.33m failed outbound calls per second
+
+  # A healthy demo at the same cadence: nothing fires.
+  - interval: 75s
+    input_series:
+      - series: 'traces_span_metrics_calls_total{service_name="payment", span_kind="SPAN_KIND_SERVER", status_code="STATUS_CODE_UNSET"}'
+        values: '0+1x20'
+      - series: 'traces_span_metrics_calls_total{service_name="load-generator", span_kind="SPAN_KIND_CLIENT", status_code="STATUS_CODE_ERROR"}'
+        values: '0+5x20'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: HighErrorRate
+      - eval_time: 20m
+        alertname: DependencyErrors

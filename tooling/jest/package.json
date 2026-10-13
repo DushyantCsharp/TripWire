@@ -1,0 +1,27 @@
+{
+  "name": "@tripwire/jest-config",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./index.js",
+    "./services": {
+      "types": "./services.d.ts",
+      "default": "./services.js"
+    }
+  },
+  "dependencies": {
+    "@jest/globals": "catalog:",
+    "@swc/core": "1.16.2",
+    "@swc/jest": "^0.2.39",
+    "@testcontainers/postgresql": "^12.2.0",
+    "jest-environment-node": "^30.5.2",
+    "testcontainers": "^12.2.0"
+  },
+  "peerDependencies": {
+    "jest": "catalog:"
+  },
+  "devDependencies": {
+    "jest": "catalog:"
+  }
+}

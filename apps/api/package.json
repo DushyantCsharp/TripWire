@@ -1,0 +1,42 @@
+{
+  "name": "@tripwire/api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.build.json",
+    "dev": "tsx watch --conditions=@tripwire/source --env-file-if-exists=../../.env src/main.ts",
+    "start": "node --env-file-if-exists=../../.env dist/main.js",
+    "typecheck": "tsc",
+    "lint": "eslint .",
+    "test": "NODE_OPTIONS='--experimental-vm-modules --disable-warning=ExperimentalWarning' jest",
+    "clean": "rm -rf dist .turbo",
+    "test:integration": "NODE_OPTIONS='--experimental-vm-modules --disable-warning=ExperimentalWarning' jest --config jest.integration.config.js"
+  },
+  "dependencies": {
+    "@tripwire/config": "workspace:*",
+    "@tripwire/contracts": "workspace:*",
+    "@tripwire/result": "workspace:*",
+    "bullmq": "^6.3.12",
+    "fastify": "^5.12.5",
+    "graphql": "catalog:",
+    "graphql-yoga": "^5.24.4",
+    "ioredis": "^6.0.0",
+    "uuid": "^14.0.3",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@jest/globals": "catalog:",
+    "@tripwire/eslint-config": "workspace:*",
+    "@tripwire/jest-config": "workspace:*",
+    "@tripwire/tsconfig": "workspace:*",
+    "@types/node": "catalog:",
+    "eslint": "catalog:",
+    "jest": "catalog:",
+    "tsx": "catalog:",
+    "typescript": "catalog:"
+  }
+}

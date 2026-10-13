@@ -1,0 +1,49 @@
+fragment ProposedActionFields on ProposedAction {
+  id
+  kind
+  summary
+  rationale
+  payload
+  payloadHash
+  status
+  proposedAt
+  approval {
+    id
+    decision
+    reason
+    decidedBy
+    decidedAt
+    expiresAt
+    consumedAt
+  }
+}
+
+mutation ApproveAction($input: ApproveActionInput!) {
+  approveAction(input: $input) {
+    __typename
+    ... on ActionDecided {
+      action {
+        ...ProposedActionFields
+      }
+    }
+    ... on ActionDecisionError {
+      code
+      message
+    }
+  }
+}
+
+mutation RejectAction($input: RejectActionInput!) {
+  rejectAction(input: $input) {
+    __typename
+    ... on ActionDecided {
+      action {
+        ...ProposedActionFields
+      }
+    }
+    ... on ActionDecisionError {
+      code
+      message
+    }
+  }
+}

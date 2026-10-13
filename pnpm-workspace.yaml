@@ -1,0 +1,44 @@
+packages:
+  - apps/*
+  - packages/*
+  - tooling/*
+  - evals
+
+# Versions shared by more than one workspace. Reference them as "catalog:".
+catalog:
+  '@jest/globals': ^30.5.2
+  '@types/node': ^22.20.5
+  '@types/react': ^19.3.0
+  '@types/react-dom': ^19.3.0
+  eslint: ^10.12.0
+  graphql: ^17.0.2
+  jest: ^30.5.2
+  prettier: ^3.9.10
+  tsx: ^4.23.15
+  turbo: ^2.11.7
+  typescript: ~6.0.3
+  zod: ^4.6.6
+
+# Dependencies allowed to run install scripts (pnpm blocks all others).
+onlyBuiltDependencies:
+  - esbuild
+  - msgpackr-extract
+
+ignoredBuiltDependencies:
+  # Install-time download analytics pulled in by Spectral. Never run it.
+  - '@scarf/scarf'
+  # Pulled in by testcontainers: ssh2's optional native crypto (the pure-JS fallback is fine) and
+  # protobufjs's postinstall version notice.
+  - cpu-features
+  - protobufjs
+  - ssh2
+  # Pulled in by Jest and @swc/jest. Each ships its native binary as an optional per-platform
+  # dependency; the install scripts only verify it or build a fallback.
+  - '@parcel/watcher'
+  - '@swc/core'
+  - unrs-resolver
+
+peerDependencyRules:
+  allowedVersions:
+    # Declares ^5 but only uses the stable compiler API, which TypeScript 6 keeps.
+    openapi-typescript>typescript: '6'

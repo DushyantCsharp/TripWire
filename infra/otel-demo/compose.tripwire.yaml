@@ -1,0 +1,20 @@
+# Layered onto the upstream demo compose files by `just demo-up`. Upstream publishes these
+# backends on random host ports; Tripwire's tools need fixed ones.
+services:
+  jaeger:
+    ports:
+      - 127.0.0.1:${DEMO_JAEGER_PORT:-26686}:16686
+  opensearch:
+    ports:
+      - 127.0.0.1:${DEMO_OPENSEARCH_PORT:-29200}:9200
+  # Tripwire's alert rules for the golden-set capture (evals/alert-rules.yaml), and room for its
+  # queries over an hour of span metrics: upstream caps Prometheus at 200M. Paths are relative to
+  # the project directory (infra/otel-demo/upstream).
+  prometheus:
+    volumes:
+      - ../prometheus-config.yaml:/etc/prometheus/prometheus-config.yaml:ro
+      - ../../../evals/alert-rules.yaml:/etc/prometheus/tripwire-alert-rules.yaml:ro
+    deploy:
+      resources:
+        limits:
+          memory: 600M

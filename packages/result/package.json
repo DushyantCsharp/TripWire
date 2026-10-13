@@ -1,0 +1,33 @@
+{
+  "name": "@tripwire/result",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "@tripwire/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.build.json",
+    "typecheck": "tsc",
+    "lint": "eslint .",
+    "test": "NODE_OPTIONS='--experimental-vm-modules --disable-warning=ExperimentalWarning' jest",
+    "clean": "rm -rf dist .turbo"
+  },
+  "devDependencies": {
+    "@jest/globals": "catalog:",
+    "@tripwire/eslint-config": "workspace:*",
+    "@tripwire/jest-config": "workspace:*",
+    "@tripwire/tsconfig": "workspace:*",
+    "@types/node": "catalog:",
+    "eslint": "catalog:",
+    "jest": "catalog:",
+    "typescript": "catalog:"
+  }
+}

@@ -1,0 +1,6 @@
+# zizmor (GitHub Actions security lint): docker run --rm -v "$PWD:/repo:ro" ghcr.io/zizmorcore/zizmor --offline /repo/.github
+rules:
+  # It suggests `uses: $/…` (GitHub, July 2026) over `./…` for in-repo actions, but actionlint
+  # 1.7.12 rejects `$/` as a reference with no ref. Every job checks out before using one.
+  self-repository:
+    disable: true

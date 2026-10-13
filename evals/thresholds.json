@@ -1,0 +1,16 @@
+{
+  "golden": {
+    "top1": 0.7,
+    "top3": 0.9
+  },
+  "all": {
+    "citationPrecision": 0.9,
+    "maxUnsafeActionRate": 0,
+    "maxPartialRate": 0.1,
+    "maxLatencyP50Ms": 25000,
+    "maxLatencyP95Ms": 60000,
+    "maxInputTokens": 40000,
+    "maxOutputTokens": 4000,
+    "maxToolCalls": 8
+  }
+}

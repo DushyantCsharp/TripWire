@@ -1,0 +1,653 @@
+openapi: 3.1.0
+info:
+  title: Tripwire API
+  version: 0.1.0
+  contact:
+    name: Tripwire maintainers
+  description: |
+    REST surface of Tripwire: alert ingestion webhooks and read access to incidents. The console
+    uses GraphQL at /graphql (schema.graphql).
+
+    Errors are RFC 9457 problem details (`application/problem+json`). `type` identifies the problem
+    as a relative URI under /problems/; branch on `type`, never on `title` or `detail`.
+
+    IDs are opaque, type-prefixed strings (`inc_…`, `ing_…`) shared with the GraphQL API.
+servers:
+  - url: http://localhost:4000
+    description: Local development
+tags:
+  - name: webhooks
+    description: Alert ingestion. Ingest only verifies and enqueues; clustering and triage are asynchronous.
+  - name: incidents
+    description: Read access to incidents.
+  - name: health
+    description: Liveness.
+
+paths:
+  /v1/healthz:
+    get:
+      operationId: getHealth
+      tags: [health]
+      summary: Liveness probe
+      description: Returns 200 while the API process is up. Does not check dependencies.
+      security: []
+      responses:
+        '200':
+          description: The API process is up.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+
+  /v1/webhooks/alertmanager:
+    post:
+      operationId: ingestAlertmanagerWebhook
+      tags: [webhooks]
+      summary: Ingest an Alertmanager notification
+      description: |
+        Accepts the Alertmanager webhook payload (version 4) as Alertmanager sends it. Alertmanager
+        cannot sign requests, so it posts through a signing relay that adds `X-Tripwire-Signature`
+        and `Idempotency-Key`.
+
+        Checks run in this order, cheapest first: load shedding (503), size and media type
+        (413, 415), signature (401), body validation (400), idempotency (202 replay or 409), enqueue (202).
+      security:
+        - webhookSignature: []
+      parameters:
+        - $ref: '#/components/parameters/Signature'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AlertmanagerWebhook'
+      responses:
+        '202':
+          $ref: '#/components/responses/Accepted'
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/InvalidSignature'
+        '409':
+          $ref: '#/components/responses/IdempotencyConflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '503':
+          $ref: '#/components/responses/Overloaded'
+        default:
+          $ref: '#/components/responses/UnexpectedError'
+
+  /v1/webhooks/generic:
+    post:
+      operationId: ingestGenericWebhook
+      tags: [webhooks]
+      summary: Ingest alerts in Tripwire's generic format
+      description: |
+        For senders other than Alertmanager. Accepts a batch of 1–1000 alerts.
+
+        Checks run in this order, cheapest first: load shedding (503), size and media type
+        (413, 415), signature (401), body validation (400), idempotency (202 replay or 409), enqueue (202).
+      security:
+        - webhookSignature: []
+      parameters:
+        - $ref: '#/components/parameters/Signature'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenericWebhook'
+      responses:
+        '202':
+          $ref: '#/components/responses/Accepted'
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/InvalidSignature'
+        '409':
+          $ref: '#/components/responses/IdempotencyConflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '503':
+          $ref: '#/components/responses/Overloaded'
+        default:
+          $ref: '#/components/responses/UnexpectedError'
+
+  /v1/incidents:
+    get:
+      operationId: listIncidents
+      tags: [incidents]
+      summary: List incidents, most recently active first
+      description: |
+        Cursor-paginated, ordered by `last_seen_at` descending, then `id`. Pass `next_cursor` from
+        one page as `cursor` to get the next; `next_cursor` is null on the last page.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: One page of incidents.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IncidentPage'
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        default:
+          $ref: '#/components/responses/UnexpectedError'
+
+components:
+  securitySchemes:
+    webhookSignature:
+      type: apiKey
+      in: header
+      name: X-Tripwire-Signature
+      description: |
+        HMAC-SHA256 over the timestamp, the idempotency key and the raw body bytes:
+
+            X-Tripwire-Signature: t=<unix seconds>,v1=<hex>
+            v1 = hex(HMAC_SHA256(secret, "<t>.<Idempotency-Key>.<raw body>"))
+
+        Signing the key binds it to the body, so a captured request cannot be replayed under a new
+        key. Requests whose `t` is more than 300 seconds from server time are rejected. During
+        secret rotation a sender may send several `v1=` values; any match is accepted.
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: API token for read endpoints.
+
+  parameters:
+    Signature:
+      name: X-Tripwire-Signature
+      in: header
+      required: true
+      description: Webhook signature; see the `webhookSignature` security scheme.
+      schema:
+        type: string
+        pattern: '^t=[0-9]{1,12}(,v1=[0-9a-f]{64}){1,4}$'
+      example: t=1791741772,v1=5257a869e7ecebeda32affa62cdca3fa51cad7e77a0e56ff536d0ce8e108d8bd
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: |
+        Unique per logical delivery; reuse it on every retry of that delivery. Keys are remembered
+        for 24 hours. Printable ASCII, no spaces.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 255
+        pattern: '^[\x21-\x7E]+$'
+      example: am-6f1c2b0e-5d1a-4c55-9a8e-2f4c3b9d7e10
+    Limit:
+      name: limit
+      in: query
+      required: false
+      description: Page size.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+    Cursor:
+      name: cursor
+      in: query
+      required: false
+      description: The `next_cursor` of the previous page. Opaque; do not construct or parse it.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 512
+
+  headers:
+    RetryAfter:
+      required: true
+      description: Seconds to wait before retrying (RFC 9110 delay-seconds). Includes jitter.
+      schema:
+        type: integer
+        minimum: 1
+
+  responses:
+    Accepted:
+      description: |
+        Verified and enqueued; clustering and triage happen asynchronously. Retrying with the same
+        Idempotency-Key and body (including concurrently) returns this same response, with the same
+        `ingest_id`, and adds `Idempotent-Replayed: true`.
+      headers:
+        Idempotent-Replayed:
+          description: Present, with value `true`, when this response replays an earlier request.
+          schema:
+            type: string
+            const: 'true'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/IngestAccepted'
+
+    ValidationFailed:
+      description: The request is malformed. `errors` points at each offending field.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ValidationProblem'
+
+    InvalidSignature:
+      description: The signature is missing, malformed, outside the 300-second window, or does not match.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/InvalidSignatureProblem'
+
+    Unauthorized:
+      description: The bearer token is missing or invalid.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/UnauthorizedProblem'
+
+    IdempotencyConflict:
+      description: |
+        The Idempotency-Key was already used with a different body: the SHA-256 of this request's
+        raw body differs from the first request's. Nothing was enqueued. A new payload needs a new
+        key; retrying the original body with this key still returns the original 202.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/IdempotencyConflictProblem'
+          example:
+            type: /problems/idempotency-key-reused
+            title: Idempotency key reused with a different body
+            status: 409
+            detail: Key 'am-6f1c2b0e-5d1a-4c55-9a8e-2f4c3b9d7e10' was first used at 2026-10-11T18:05:48.780Z with a different body.
+            instance: /v1/webhooks/alertmanager
+            trace_id: 4bf92f3577b34da6a3ce929d0e0e4736
+            idempotency_key: am-6f1c2b0e-5d1a-4c55-9a8e-2f4c3b9d7e10
+            first_ingest_id: ing_01k7a3x9m2q8r4t6v0w5y7z9b1
+            first_received_at: '2026-10-11T18:05:48.780Z'
+
+    PayloadTooLarge:
+      description: The body exceeds 1 MiB.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/PayloadTooLargeProblem'
+
+    UnsupportedMediaType:
+      description: The body is not `application/json`.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/UnsupportedMediaTypeProblem'
+
+    Overloaded:
+      description: |
+        Load shedding: the ingest queue is above its high-water mark. Nothing was enqueued and the
+        Idempotency-Key was not recorded, so retrying the identical request (same key and body)
+        after Retry-After is safe.
+      headers:
+        Retry-After:
+          $ref: '#/components/headers/RetryAfter'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/OverloadedProblem'
+          example:
+            type: /problems/overloaded
+            title: Ingest is shedding load
+            status: 503
+            detail: The ingest queue is above its high-water mark. Retry after the Retry-After delay.
+            instance: /v1/webhooks/generic
+            trace_id: 4bf92f3577b34da6a3ce929d0e0e4736
+
+    UnexpectedError:
+      description: An unexpected server error. Safe to retry with the same Idempotency-Key.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+
+  schemas:
+    Health:
+      type: object
+      additionalProperties: false
+      required: [status]
+      properties:
+        status:
+          type: string
+          const: ok
+
+    IngestId:
+      type: string
+      description: Opaque ingest identifier.
+      pattern: '^ing_[0-9a-z]{26}$'
+
+    IncidentId:
+      type: string
+      description: Opaque incident identifier, the same as the GraphQL `Incident.id`.
+      pattern: '^inc_[0-9a-z]{26}$'
+
+    IngestAccepted:
+      type: object
+      additionalProperties: false
+      required: [ingest_id, received_at, alert_count]
+      properties:
+        ingest_id:
+          $ref: '#/components/schemas/IngestId'
+        received_at:
+          type: string
+          format: date-time
+        alert_count:
+          type: integer
+          minimum: 1
+          description: Number of alerts accepted from the payload.
+
+    Severity:
+      type: string
+      enum: [critical, warning, info]
+
+    LabelSet:
+      type: object
+      maxProperties: 64
+      propertyNames:
+        maxLength: 128
+      additionalProperties:
+        type: string
+        maxLength: 1024
+
+    GenericWebhook:
+      type: object
+      additionalProperties: false
+      required: [source, alerts]
+      properties:
+        source:
+          type: string
+          description: The sending system, e.g. `k6` or `datadog`.
+          pattern: '^[a-z0-9][a-z0-9_.-]{0,63}$'
+        alerts:
+          type: array
+          minItems: 1
+          maxItems: 1000
+          items:
+            $ref: '#/components/schemas/GenericAlert'
+
+    GenericAlert:
+      type: object
+      additionalProperties: false
+      required: [name, status, severity, starts_at]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        status:
+          type: string
+          enum: [firing, resolved]
+        severity:
+          $ref: '#/components/schemas/Severity'
+        service:
+          type: string
+          minLength: 1
+          maxLength: 200
+        summary:
+          type: string
+          maxLength: 1000
+        description:
+          type: string
+          maxLength: 10000
+        labels:
+          $ref: '#/components/schemas/LabelSet'
+        starts_at:
+          type: string
+          format: date-time
+        ends_at:
+          type: string
+          format: date-time
+        external_id:
+          type: string
+          maxLength: 200
+          description: The sender's stable id for this alert. Used as a deduplication hint.
+        url:
+          type: string
+          format: uri
+          maxLength: 2048
+
+    AlertmanagerWebhook:
+      type: object
+      description: Alertmanager webhook payload, version 4. Unknown fields are accepted for forward compatibility.
+      required:
+        [
+          version,
+          groupKey,
+          status,
+          receiver,
+          groupLabels,
+          commonLabels,
+          commonAnnotations,
+          externalURL,
+          alerts,
+        ]
+      properties:
+        version:
+          type: string
+          const: '4'
+        groupKey:
+          type: string
+        truncatedAlerts:
+          type: integer
+          minimum: 0
+        status:
+          type: string
+          enum: [firing, resolved]
+        receiver:
+          type: string
+        groupLabels:
+          $ref: '#/components/schemas/LabelSet'
+        commonLabels:
+          $ref: '#/components/schemas/LabelSet'
+        commonAnnotations:
+          $ref: '#/components/schemas/LabelSet'
+        externalURL:
+          type: string
+        alerts:
+          type: array
+          minItems: 1
+          maxItems: 1000
+          items:
+            $ref: '#/components/schemas/AlertmanagerAlert'
+
+    AlertmanagerAlert:
+      type: object
+      required: [status, labels, annotations, startsAt, endsAt, fingerprint]
+      properties:
+        status:
+          type: string
+          enum: [firing, resolved]
+        labels:
+          $ref: '#/components/schemas/LabelSet'
+        annotations:
+          $ref: '#/components/schemas/LabelSet'
+        startsAt:
+          type: string
+          format: date-time
+        endsAt:
+          type: string
+          format: date-time
+          description: '`0001-01-01T00:00:00Z` while the alert is firing.'
+        generatorURL:
+          type: string
+        fingerprint:
+          type: string
+
+    IncidentPage:
+      type: object
+      additionalProperties: false
+      required: [data, next_cursor]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Incident'
+        next_cursor:
+          type: [string, 'null']
+          description: Cursor for the next page; null on the last page.
+
+    Incident:
+      type: object
+      additionalProperties: false
+      required: [id, title, status, severity, service, alert_count, first_seen_at, last_seen_at]
+      properties:
+        id:
+          $ref: '#/components/schemas/IncidentId'
+        title:
+          type: string
+        status:
+          type: string
+          enum: [open, triaging, triaged, resolved]
+        severity:
+          $ref: '#/components/schemas/Severity'
+        service:
+          type: [string, 'null']
+          description: Primary affected service, when the alerts agree on one.
+        alert_count:
+          type: integer
+          minimum: 1
+        first_seen_at:
+          type: string
+          format: date-time
+        last_seen_at:
+          type: string
+          format: date-time
+
+    Problem:
+      type: object
+      description: RFC 9457 problem details. Extension members may be present.
+      required: [type, title, status]
+      properties:
+        type:
+          type: string
+          format: uri-reference
+          description: Identifies the problem type. Stable; branch on this.
+        title:
+          type: string
+          description: Short human-readable summary of the problem type.
+        status:
+          type: integer
+          minimum: 400
+          maximum: 599
+        detail:
+          type: string
+          description: Human-readable explanation of this occurrence.
+        instance:
+          type: string
+          format: uri-reference
+          description: The request path of this occurrence.
+        trace_id:
+          type: string
+          pattern: '^[0-9a-f]{32}$'
+          description: W3C trace id of the request, for finding its logs and spans.
+
+    ValidationProblem:
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          required: [errors]
+          properties:
+            type:
+              const: /problems/validation-failed
+            status:
+              const: 400
+            errors:
+              type: array
+              minItems: 1
+              items:
+                type: object
+                additionalProperties: false
+                required: [pointer, detail]
+                properties:
+                  pointer:
+                    type: string
+                    description: JSON Pointer (RFC 6901) into the body, or `#/header/<name>` / `#/query/<name>`.
+                  detail:
+                    type: string
+
+    InvalidSignatureProblem:
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          required: [reason]
+          properties:
+            type:
+              const: /problems/invalid-signature
+            status:
+              const: 401
+            reason:
+              type: string
+              enum: [missing, malformed, expired, mismatch]
+
+    UnauthorizedProblem:
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            type:
+              const: /problems/unauthorized
+            status:
+              const: 401
+
+    IdempotencyConflictProblem:
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          required: [idempotency_key, first_ingest_id, first_received_at]
+          properties:
+            type:
+              const: /problems/idempotency-key-reused
+            status:
+              const: 409
+            idempotency_key:
+              type: string
+            first_ingest_id:
+              $ref: '#/components/schemas/IngestId'
+            first_received_at:
+              type: string
+              format: date-time
+
+    PayloadTooLargeProblem:
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            type:
+              const: /problems/payload-too-large
+            status:
+              const: 413
+
+    UnsupportedMediaTypeProblem:
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            type:
+              const: /problems/unsupported-media-type
+            status:
+              const: 415
+
+    OverloadedProblem:
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties:
+            type:
+              const: /problems/overloaded
+            status:
+              const: 503

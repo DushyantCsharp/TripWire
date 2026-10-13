@@ -1,0 +1,30 @@
+query DeadLetteredTriageJobs($first: Int) {
+  deadLetteredTriageJobs(first: $first) {
+    id
+    incidentId
+    errorClass
+    failedReason
+    lastStack
+    failedAt
+    attempts {
+      attempt
+      errorClass
+      message
+      at
+    }
+  }
+}
+
+mutation RedriveTriageJob($input: RedriveTriageJobInput!) {
+  redriveTriageJob(input: $input) {
+    __typename
+    ... on TriageJobRedriven {
+      jobId
+      incidentId
+    }
+    ... on RedriveError {
+      code
+      message
+    }
+  }
+}

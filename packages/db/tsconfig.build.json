@@ -1,0 +1,5 @@
+{
+  "extends": "@tripwire/tsconfig/node-build.json",
+  // Test helpers need dev-only packages (testcontainers) and never ship.
+  "exclude": ["${configDir}/src/**/*.test.ts", "${configDir}/src/testing/**"]
+}

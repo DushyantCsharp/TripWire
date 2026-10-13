@@ -1,0 +1,37 @@
+{
+  "name": "@tripwire/evals",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc",
+    "lint": "eslint .",
+    "test": "NODE_OPTIONS='--experimental-vm-modules --disable-warning=ExperimentalWarning' jest",
+    "test:integration": "NODE_OPTIONS='--experimental-vm-modules --disable-warning=ExperimentalWarning' jest --config jest.integration.config.js",
+    "capture": "tsx --conditions=@tripwire/source --env-file-if-exists=../.env src/capture/cli.ts",
+    "eval": "tsx --conditions=@tripwire/source --env-file-if-exists=../.env src/harness/cli.ts",
+    "clean": "rm -rf .turbo"
+  },
+  "devDependencies": {
+    "@jest/globals": "catalog:",
+    "@tripwire/eslint-config": "workspace:*",
+    "@tripwire/jest-config": "workspace:*",
+    "@tripwire/tsconfig": "workspace:*",
+    "@types/node": "catalog:",
+    "eslint": "catalog:",
+    "jest": "catalog:",
+    "tsx": "catalog:",
+    "typescript": "catalog:"
+  },
+  "dependencies": {
+    "@testcontainers/postgresql": "^12.2.0",
+    "@tripwire/agent": "workspace:*",
+    "@tripwire/config": "workspace:*",
+    "@tripwire/contracts": "workspace:*",
+    "@tripwire/db": "workspace:*",
+    "@tripwire/pipeline": "workspace:*",
+    "@tripwire/result": "workspace:*",
+    "testcontainers": "^12.2.0",
+    "zod": "catalog:"
+  }
+}

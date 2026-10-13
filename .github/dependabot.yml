@@ -1,0 +1,24 @@
+# Keeps what's pinned by digest current: the workflows' action SHAs and the Dockerfile's base
+# images. One grouped pull request a week per ecosystem; CI and the release scan vet them.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directories: ['/', '/.github/actions/*']
+    schedule:
+      interval: weekly
+    # A release a week old before it's proposed: time for a compromised one to be caught.
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        patterns: ['*']
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+    # A release a week old before it's proposed: time for a compromised one to be caught.
+    cooldown:
+      default-days: 7
+    groups:
+      base-images:
+        patterns: ['*']

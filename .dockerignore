@@ -1,0 +1,18 @@
+# The image build context (Dockerfile): sources and manifests, not build output, local state or data.
+**/node_modules
+**/dist
+**/.next
+**/.turbo
+**/coverage
+**/*.tsbuildinfo
+**/.DS_Store
+.git
+.github
+.env
+.env.*
+!.env.example
+reports
+infra/otel-demo/upstream
+evals/golden
+evals/replay
+evals/reports

@@ -1,0 +1,236 @@
+# The evals (evals/, CLAUDE.md "Evals"), at two costs:
+# - replay, on pull requests labelled run-evals: the nightly subset with recorded model responses
+#   (evals/replay), so no key and no spend. Gated on main's thresholds and on main's replay
+#   baseline: replay is deterministic, so any metric that got worse fails it. Commented on the PR.
+# - live, against the model with ANTHROPIC_API_KEY (the `evals` environment): the 12-case nightly
+#   subset every night (about $2.50), every case on Sundays (about $10), or what a manual run asks.
+name: eval
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+  schedule:
+    - cron: '0 2 * * *' # nightly: the subset
+    - cron: '0 3 * * 0' # Sundays: every case
+  workflow_dispatch:
+    inputs:
+      cases:
+        description: Case ids, comma-separated (empty runs the nightly subset)
+        required: false
+        default: ''
+      full:
+        description: Every case (overrides cases)
+        type: boolean
+        default: false
+
+permissions: {}
+
+concurrency:
+  group: eval-${{ github.event.pull_request.number || github.ref }}-${{ github.event_name }}-${{ github.event.schedule }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  replay:
+    name: Replay the subset
+    # Labelled, and not re-run by some other label being added.
+    if: >-
+      github.event_name == 'pull_request'
+      && contains(github.event.pull_request.labels.*.name, 'run-evals')
+      && (github.event.action != 'labeled' || github.event.label.name == 'run-evals')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.7-pg16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      EVAL_DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The base branch's thresholds and baseline, below.
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - name: Thresholds and baseline from the base branch
+        # Judged by main's numbers: a pull request that re-records, or loosens a threshold, still
+        # has to match what main had.
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/base"
+          git show "origin/$BASE_REF:evals/thresholds.json" > "$RUNNER_TEMP/base/thresholds.json"
+          if git show "origin/$BASE_REF:evals/replay/baseline.json" > "$RUNNER_TEMP/base/baseline.json" 2>/dev/null; then
+            echo "BASELINE=$RUNNER_TEMP/base/baseline.json" >> "$GITHUB_ENV"
+          else
+            echo "::warning::$BASE_REF has no replay baseline yet: gated on the thresholds only"
+          fi
+      - name: Replay
+        run: >-
+          pnpm --filter @tripwire/evals eval --triager claude --subset nightly
+          --replay "$GITHUB_WORKSPACE/evals/replay"
+          --thresholds "$RUNNER_TEMP/base/thresholds.json"
+          ${BASELINE:+--baseline "$BASELINE"}
+          --out "$RUNNER_TEMP/reports"
+      - name: Collect the report
+        if: ${{ !cancelled() }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/report"
+          cp "$RUNNER_TEMP"/reports/*/report.* "$RUNNER_TEMP/report/" 2>/dev/null || true
+          if [ -f "$RUNNER_TEMP/report/report.md" ]; then
+            cat "$RUNNER_TEMP/report/report.md" >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !cancelled() }}
+        with:
+          name: eval-replay
+          path: ${{ runner.temp }}/report/
+          if-no-files-found: ignore
+          retention-days: 30
+
+  comment:
+    name: Comment the report
+    needs: replay
+    # Not on forks: their token can't comment. Their report is in the run's summary.
+    if: >-
+      !cancelled() && needs.replay.result != 'skipped'
+      && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    # Only this job can write, and it runs no code from the pull request.
+    permissions:
+      pull-requests: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        continue-on-error: true
+        with:
+          name: eval-replay
+          path: report
+      - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          RESULT: ${{ needs.replay.result }}
+        with:
+          script: |
+            const fs = require('node:fs');
+            const marker = '<!-- tripwire-eval-replay -->';
+            const run = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const verdict = process.env.RESULT === 'success' ? 'passed' : 'failed';
+            let report = fs.existsSync('report/report.md')
+              ? fs.readFileSync('report/report.md', 'utf8')
+              : 'No report: the replay stopped before writing one.';
+            // A comment holds at most 65,536 characters.
+            if (report.length > 60000) report = `${report.slice(0, 60000)}\n\n…cut: the full report is in the run.`;
+            const body = `${marker}\n**Eval replay ${verdict}** ([run](${run}))\n\n${report}`;
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              ...context.repo,
+              issue_number: context.issue.number,
+            });
+            const mine = comments.find((c) => c.user?.type === 'Bot' && c.body?.startsWith(marker));
+            if (mine) {
+              await github.rest.issues.updateComment({ ...context.repo, comment_id: mine.id, body });
+            } else {
+              await github.rest.issues.createComment({ ...context.repo, issue_number: context.issue.number, body });
+            }
+
+  live:
+    name: Live eval
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    # Holds ANTHROPIC_API_KEY. Limit it to main (deployment branch policy), not to reviewers, or
+    # every nightly run would wait for one.
+    environment: evals
+    permissions:
+      contents: read
+      # The last scheduled run's report, to show what changed.
+      actions: read
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.7-pg16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      EVAL_DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - name: Which cases
+        id: scope
+        env:
+          SCHEDULE: ${{ github.event.schedule }}
+          CASES: ${{ inputs.cases }}
+          FULL: ${{ inputs.full }}
+        run: |
+          if [ "$SCHEDULE" = '0 3 * * 0' ] || [ "$FULL" = 'true' ]; then
+            echo 'scope=full' >> "$GITHUB_OUTPUT"
+            echo 'args=' >> "$GITHUB_OUTPUT"
+          elif [ -n "$CASES" ]; then
+            if ! [[ "$CASES" =~ ^[a-z0-9,-]+$ ]]; then
+              echo "::error::cases must be ids separated by commas"
+              exit 1
+            fi
+            echo 'scope=cases' >> "$GITHUB_OUTPUT"
+            echo "args=--cases $CASES" >> "$GITHUB_OUTPUT"
+          else
+            echo 'scope=nightly' >> "$GITHUB_OUTPUT"
+            echo 'args=--subset nightly' >> "$GITHUB_OUTPUT"
+          fi
+      - name: The last scheduled report of the same scope
+        if: steps.scope.outputs.scope != 'cases'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SCOPE: ${{ steps.scope.outputs.scope }}
+        run: |
+          for id in $(gh run list --repo "$GITHUB_REPOSITORY" --workflow eval.yml --event schedule \
+              --branch main --status success --limit 20 --json databaseId --jq '.[].databaseId'); do
+            if gh run download "$id" --repo "$GITHUB_REPOSITORY" --name "eval-live-$SCOPE" \
+                --dir "$RUNNER_TEMP/previous" 2>/dev/null; then
+              echo "BASELINE=$RUNNER_TEMP/previous/report.json" >> "$GITHUB_ENV"
+              echo "comparing with run $id"
+              break
+            fi
+          done
+      - name: Live eval
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ARGS: ${{ steps.scope.outputs.args }}
+        # ARGS is what the step above wrote: `--subset nightly`, `--cases a,b` or nothing.
+        run: |
+          read -ra args <<< "$ARGS"
+          pnpm --filter @tripwire/evals eval --triager claude "${args[@]}" \
+            ${BASELINE:+--baseline "$BASELINE"} --out "$RUNNER_TEMP/reports"
+      - name: Collect the report
+        if: ${{ !cancelled() }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/report"
+          cp "$RUNNER_TEMP"/reports/*/report.* "$RUNNER_TEMP/report/" 2>/dev/null || true
+          if [ -f "$RUNNER_TEMP/report/report.md" ]; then
+            cat "$RUNNER_TEMP/report/report.md" >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !cancelled() }}
+        with:
+          name: eval-live-${{ steps.scope.outputs.scope }}
+          path: ${{ runner.temp }}/report/
+          if-no-files-found: ignore
+          retention-days: 90

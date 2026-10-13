@@ -1,0 +1,17 @@
+node_modules/
+dist/
+.next/
+.turbo/
+coverage/
+*.tsbuildinfo
+next-env.d.ts
+.DS_Store
+
+.env
+.env.*
+!.env.example
+
+infra/otel-demo/upstream/
+
+# Eval runs' reports (evals/src/harness); the golden set itself is committed.
+evals/reports/

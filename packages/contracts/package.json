@@ -1,0 +1,77 @@
+{
+  "name": "@tripwire/contracts",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./graphql": {
+      "@tripwire/source": "./src/graphql.ts",
+      "types": "./dist/graphql.d.ts",
+      "default": "./dist/graphql.js"
+    },
+    "./graphql/server": {
+      "@tripwire/source": "./src/graphql-server.ts",
+      "types": "./dist/graphql-server.d.ts",
+      "default": "./dist/graphql-server.js"
+    },
+    "./openapi": {
+      "@tripwire/source": "./src/openapi.ts",
+      "types": "./dist/openapi.d.ts",
+      "default": "./dist/openapi.js"
+    },
+    "./zod": {
+      "@tripwire/source": "./src/zod.ts",
+      "types": "./dist/zod.d.ts",
+      "default": "./dist/zod.js"
+    },
+    "./queues": {
+      "@tripwire/source": "./src/queues.ts",
+      "types": "./dist/queues.d.ts",
+      "default": "./dist/queues.js"
+    },
+    "./ids": {
+      "@tripwire/source": "./src/ids.ts",
+      "types": "./dist/ids.d.ts",
+      "default": "./dist/ids.js"
+    }
+  },
+  "files": [
+    "dist",
+    "schema"
+  ],
+  "scripts": {
+    "generate": "node --disable-warning=ExperimentalWarning generate.ts",
+    "check:generated": "node --disable-warning=ExperimentalWarning generate.ts --check",
+    "build": "rm -rf dist && tsc -p tsconfig.build.json",
+    "typecheck": "tsc",
+    "lint": "eslint . && NODE_OPTIONS=--disable-warning=DEP0040 spectral lint schema/openapi.yaml --fail-severity=warn",
+    "test": "NODE_OPTIONS='--experimental-vm-modules --disable-warning=ExperimentalWarning' jest",
+    "clean": "rm -rf dist .turbo"
+  },
+  "dependencies": {
+    "@graphql-typed-document-node/core": "^3.2.0",
+    "graphql": "catalog:",
+    "openapi-fetch": "^0.17.0",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@graphql-codegen/cli": "^7.4.6",
+    "@graphql-codegen/typed-document-node": "^7.1.1",
+    "@graphql-codegen/typescript": "^6.1.2",
+    "@graphql-codegen/typescript-operations": "^6.1.10",
+    "@graphql-codegen/typescript-resolvers": "^6.1.1",
+    "@hey-api/openapi-ts": "^0.99.0",
+    "@jest/globals": "catalog:",
+    "@stoplight/spectral-cli": "^6.17.0",
+    "@tripwire/eslint-config": "workspace:*",
+    "@tripwire/jest-config": "workspace:*",
+    "@tripwire/tsconfig": "workspace:*",
+    "@types/node": "catalog:",
+    "eslint": "catalog:",
+    "expect-type": "^1.4.0",
+    "jest": "catalog:",
+    "openapi-typescript": "^7.13.0",
+    "prettier": "catalog:",
+    "typescript": "catalog:"
+  }
+}

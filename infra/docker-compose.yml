@@ -1,0 +1,79 @@
+# Tripwire's own dependencies and self-observability. The OpenTelemetry Demo runs as a separate
+# compose project (`just demo-up`); see README.md for why, and for the port map.
+name: tripwire
+
+services:
+  postgres:
+    image: pgvector/pgvector:0.8.7-pg16
+    environment:
+      POSTGRES_USER: tripwire
+      POSTGRES_PASSWORD: tripwire
+      POSTGRES_DB: tripwire
+    ports:
+      - 127.0.0.1:${TRIPWIRE_PG_PORT:-15432}:5432
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U tripwire -d tripwire]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7.4.11-alpine
+    # BullMQ requires noeviction: an evicted queue key is a silently lost job.
+    command: [redis-server, --appendonly, 'yes', --maxmemory-policy, noeviction]
+    ports:
+      - 127.0.0.1:${TRIPWIRE_REDIS_PORT:-16379}:6379
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  otel-collector:
+    image: ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib:0.159.0
+    command: [--config=/etc/otelcol/config.yaml]
+    volumes:
+      - ./otel-collector/config.yaml:/etc/otelcol/config.yaml:ro
+    ports:
+      - 127.0.0.1:${TRIPWIRE_OTLP_GRPC_PORT:-14317}:4317
+      - 127.0.0.1:${TRIPWIRE_OTLP_HTTP_PORT:-14318}:4318
+    depends_on:
+      - jaeger
+      - prometheus
+
+  jaeger:
+    image: quay.io/jaegertracing/jaeger:2.19.0
+    ports:
+      - 127.0.0.1:${TRIPWIRE_JAEGER_PORT:-16687}:16686
+
+  prometheus:
+    image: quay.io/prometheus/prometheus:v3.13.1
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --web.enable-otlp-receiver
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - 127.0.0.1:${TRIPWIRE_PROMETHEUS_PORT:-19090}:9090
+
+  grafana:
+    image: grafana/grafana:13.1.0
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: 'true'
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_AUTH_DISABLE_LOGIN_FORM: 'true'
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+    ports:
+      - 127.0.0.1:${TRIPWIRE_GRAFANA_PORT:-13000}:3000
+    depends_on:
+      - prometheus
+      - jaeger
+
+volumes:
+  pgdata:
+  redisdata:

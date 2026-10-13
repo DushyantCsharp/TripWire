@@ -1,0 +1,27 @@
+{
+  "$schema": "https://turborepo.com/schema.json",
+  "ui": "stream",
+  "globalDependencies": ["tooling/*/*.json", "tooling/*/*.js"],
+  "globalPassThroughEnv": ["TRIPWIRE_TEST_POSTGRES_URL", "TRIPWIRE_TEST_REDIS_URL"],
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**"]
+    },
+    "typecheck": {},
+    "lint": {},
+    "test": {},
+    "test:integration": {},
+    "check:generated": {},
+    "generate": {
+      "cache": false
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true
+    },
+    "clean": {
+      "cache": false
+    }
+  }
+}

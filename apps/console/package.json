@@ -1,0 +1,33 @@
+{
+  "name": "@tripwire/console",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "next build",
+    "dev": "next dev --port 3000",
+    "start": "next start --port 3000",
+    "typecheck": "next typegen && tsc",
+    "lint": "eslint .",
+    "clean": "rm -rf .next .turbo"
+  },
+  "dependencies": {
+    "@tripwire/config": "workspace:*",
+    "@tripwire/contracts": "workspace:*",
+    "@urql/next": "^2.0.1",
+    "next": "16.4.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "urql": "^5.0.4",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@tripwire/eslint-config": "workspace:*",
+    "@tripwire/tsconfig": "workspace:*",
+    "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "eslint": "catalog:",
+    "typescript": "catalog:"
+  }
+}

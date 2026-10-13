@@ -1,0 +1,164 @@
+# Pull requests, and main after each merge (which keeps main green and fills the caches pull
+# requests read: GitHub doesn't share caches between pull request branches). Only the workspaces a
+# change affects are checked and tested; see scripts/affected-workspaces.mjs.
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions: {}
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  affected:
+    name: Affected workspaces
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      any: ${{ steps.affected.outputs.any }}
+      filter: ${{ steps.affected.outputs.filter }}
+      workspaces: ${{ steps.affected.outputs.workspaces }}
+      db: ${{ steps.affected.outputs.db }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - id: affected
+        name: Work out what the change affects
+        env:
+          # Pull requests: the target branch. Pushes: the previous tip (all zeros on a new branch,
+          # which the script treats as "everything").
+          BASE: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || github.event.before }}
+        run: node scripts/affected-workspaces.mjs "$BASE"
+
+  static:
+    name: Lint, typecheck, contracts
+    needs: affected
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # turbo's `...[base]` filter compares with the base.
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - name: Lint, typecheck and contract staleness (affected packages)
+        if: needs.affected.outputs.any == 'true'
+        env:
+          FILTER: ${{ needs.affected.outputs.filter }}
+        run: pnpm turbo run lint typecheck check:generated ${FILTER:+"--filter=$FILTER"}
+      - name: Package boundaries
+        run: pnpm check:boundaries
+      - name: Formatting
+        run: pnpm format:check
+      - name: Script tests
+        run: pnpm test:scripts
+      - name: Alert rule tests
+        run: >-
+          docker run --rm -v "$PWD/evals:/rules:ro" --entrypoint promtool
+          quay.io/prometheus/prometheus:v3.13.1 test rules /rules/alert-rules.test.yaml
+
+  test:
+    name: Jest (unit and integration, coverage)
+    needs: affected
+    if: needs.affected.outputs.workspaces != ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    # The images tooling/jest/services.js names. With both URLs set, the Jest global setup starts
+    # no containers of its own (the evals harness test still starts its Prometheus).
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.7-pg16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+      redis:
+        image: redis:7.4.11-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      TRIPWIRE_TEST_POSTGRES_URL: postgres://postgres:postgres@localhost:5432/postgres
+      TRIPWIRE_TEST_REDIS_URL: redis://localhost:6379
+      TRIPWIRE_JEST_WORKSPACES: ${{ needs.affected.outputs.workspaces }}
+      JEST_JUNIT_OUTPUT_DIR: reports/junit
+      JEST_JUNIT_ADD_FILE_ATTRIBUTE: 'true'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - name: Jest, with the coverage gate for the affected workspaces
+        # --passWithNoTests: a run of only packages/telemetry, which has no tests yet.
+        run: pnpm coverage --ci --passWithNoTests --reporters=default --reporters=jest-junit
+      - name: Coverage summary
+        if: always()
+        run: node scripts/coverage-summary.mjs coverage/coverage-summary.json >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: coverage
+          path: coverage/
+          if-no-files-found: ignore
+          retention-days: 14
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: junit
+          path: reports/junit/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  migrations:
+    name: Migrations up, down, up
+    needs: affected
+    if: needs.affected.outputs.db == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.7-pg16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - name: Round trip through the migration CLI
+        env:
+          CONTAINER: ${{ job.services.postgres.id }}
+        run: scripts/migration-roundtrip.sh postgres://postgres:postgres@localhost:5432/postgres "$CONTAINER"
