@@ -19,6 +19,11 @@ updates:
     # A release a week old before it's proposed: time for a compromised one to be caught.
     cooldown:
       default-days: 7
+    # The build stage's Node must stay on the runtime's major (distroless nodejs22, .nvmrc): a
+    # newer major would install dependencies for a Node the images don't run.
+    ignore:
+      - dependency-name: node
+        update-types: ['version-update:semver-major']
     groups:
       base-images:
         patterns: ['*']
