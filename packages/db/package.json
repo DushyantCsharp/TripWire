@@ -30,11 +30,11 @@
     "test:integration": "NODE_OPTIONS='--experimental-vm-modules --disable-warning=ExperimentalWarning' jest --config jest.integration.config.js",
     "clean": "rm -rf dist .turbo",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "tsx --env-file-if-exists=../../.env src/cli.ts up",
-    "db:rollback": "tsx --env-file-if-exists=../../.env src/cli.ts down",
-    "db:status": "tsx --env-file-if-exists=../../.env src/cli.ts status",
-    "db:seed": "tsx --env-file-if-exists=../../.env src/cli.ts seed",
-    "db:backfill": "tsx --env-file-if-exists=../../.env src/cli.ts backfill"
+    "db:migrate": "tsx --conditions=@tripwire/source --env-file-if-exists=../../.env src/cli.ts up",
+    "db:rollback": "tsx --conditions=@tripwire/source --env-file-if-exists=../../.env src/cli.ts down",
+    "db:status": "tsx --conditions=@tripwire/source --env-file-if-exists=../../.env src/cli.ts status",
+    "db:seed": "tsx --conditions=@tripwire/source --env-file-if-exists=../../.env src/cli.ts seed",
+    "db:backfill": "tsx --conditions=@tripwire/source --env-file-if-exists=../../.env src/cli.ts backfill"
   },
   "dependencies": {
     "@tripwire/config": "workspace:*",
