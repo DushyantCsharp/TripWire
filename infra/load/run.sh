@@ -46,12 +46,15 @@ backlog() {
   echo "$total"
 }
 
-# One line per container every couple of seconds: epoch, name, CPU %, memory.
+# One line per container every couple of seconds: epoch, name, CPU %, memory. Containers are found
+# by name pattern (a scaled api may be tripwire-api-2), and a failed sample never ends the loop.
 sample_stats() {
+  local names
   while :; do
-    docker stats --no-stream --format '{{.Name}},{{.CPUPerc}},{{.MemUsage}}' \
-      tripwire-api-1 tripwire-worker-1 tripwire-redis-1 tripwire-postgres-1 2>/dev/null |
-      sed "s/^/$(date +%s),/"
+    names=$(docker ps --format '{{.Names}}' | grep -E '^tripwire-(api|worker|redis|postgres)-[0-9]+$' || true)
+    # shellcheck disable=SC2086 # one container name per word
+    docker stats --no-stream --format '{{.Name}},{{.CPUPerc}},{{.MemUsage}}' $names 2>/dev/null |
+      sed "s/^/$(date +%s),/" || true
   done
 }
 
