@@ -139,7 +139,8 @@ export function findRecentAlertsByFingerprint(db: Database, args: RecentAlertsAr
 
 /**
  * For the load test's dedupe score (evals load-report): every alert a k6 storm run sent, by the
- * problem it stood for and the incident it joined (null until it is clustered). The run and the
+ * problem it stood for and the incident it joined (null until it is clustered), with when the api
+ * accepted it and when it was clustered. The run and the
  * problem travel in annotations (load_run, load_truth), which neither the fingerprint nor the
  * embedding reads.
  */
@@ -149,6 +150,8 @@ export function loadRunAssignments(db: Database, runId: string) {
       .select({
         truth: sql<string>`${alerts.rawPayload} -> 'annotations' ->> 'load_truth'`,
         incidentId: incidentAlerts.incidentId,
+        receivedAt: alerts.receivedAt,
+        attachedAt: incidentAlerts.attachedAt,
       })
       .from(alerts)
       .leftJoin(incidentAlerts, eq(incidentAlerts.alertId, alerts.id))

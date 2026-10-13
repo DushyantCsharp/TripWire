@@ -12,10 +12,12 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { PostgreSqlContainer } from '@testcontainers/postgresql';
+import { PRICE_SHEET_DATE } from '@tripwire/agent';
 import { loadEnvOrExit } from '@tripwire/config';
 import { z } from 'zod';
 import { GOLDEN_DIR, listCases, readCase } from '../cases.js';
 import { SUBSETS } from '../catalog.js';
+import { currentCommit } from '../commit.js';
 import { comparableReport, compareReports, regressions, renderComparison } from '../compare.js';
 import { buildReport, renderMarkdown } from '../report.js';
 import { scoreRun, type CaseScore } from '../score.js';
@@ -175,6 +177,8 @@ const report = buildReport(scores, {
   thresholds: (summary) => checkThresholds(summary, thresholds, { latency }),
   settings: {
     mode,
+    commit: (await currentCommit()) ?? 'unknown',
+    'price sheet': PRICE_SHEET_DATE,
     effort: args.effort,
     repeat: args.repeat,
     cases: cases.length,

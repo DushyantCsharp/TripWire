@@ -89,10 +89,12 @@ run() { # name expect high-water
   echo "   k6 exit status $k6_status (99: a threshold failed)"
   DATABASE_URL=$database_url pnpm --dir .. --silent --filter @tripwire/evals load-report \
     --run "$id" --from "$from" --to "$to" --summary "$results/$id.json" --expect "$expect" \
-    --drained "$drained" --sample-ratio "$LOAD_SAMPLE_RATIO"
+    --drained "$drained" --commit "$commit" --sample-ratio "$LOAD_SAMPLE_RATIO"
 }
 
 echo "== building the api and worker images"
+# What the reports say they measured: the code the images are built from.
+commit=$(git describe --always --dirty --abbrev=7)
 "${compose[@]}" build api worker
 
 echo "== a fresh $LOAD_DATABASE"

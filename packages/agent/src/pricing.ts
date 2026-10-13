@@ -1,8 +1,11 @@
 import type { ModelUsage } from './model.js';
 
 // USD per million tokens. Source: https://platform.claude.com/docs/en/about-claude/pricing, read
-// 2026-10-12 (5-minute cache writes; the loop's cache breakpoints use the default 5-minute TTL).
-// Prices change: check the page before trusting a cost figure, or override per deployment.
+// on PRICE_SHEET_DATE (5-minute cache writes; the loop's cache breakpoints use the default 5-minute
+// TTL). Prices change: check the page before trusting a cost figure, or override per deployment.
+
+/** When MODEL_PRICING was read from the price sheet: every reported cost is at these prices. */
+export const PRICE_SHEET_DATE = '2026-10-12';
 
 export interface ModelPricing {
   readonly inputUsdPerMTok: number;

@@ -33,6 +33,7 @@ Node 22 (`.nvmrc`), pnpm 10, `just` (run `just` alone to list recipes).
 | Script tests                       | `pnpm test:scripts`                                                           |
 | Build an image                     | `just image api` (or `worker`, `console`)                                     |
 | Load test (after `just infra-up`)  | `just load-storm` (k6, 2k req/s; reports in `infra/load/results/`)            |
+| README results table               | `just readme` (after `just load-storm` or `just eval`)                        |
 
 ## Layout
 
@@ -54,6 +55,7 @@ tooling/            shared tsconfig, eslint, prettier, jest configs
 scripts/            repo checks CI runs: package boundaries, affected workspaces, migration round trip
 .github/            CI, eval and release workflows (see CI and release)
 Dockerfile          the api, worker and console images, one target each
+docs/adr/           architecture decision records: queues, migrations, degradation
 ```
 
 ## Package boundaries

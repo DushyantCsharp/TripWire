@@ -10,6 +10,7 @@ import { loadEnvOrExit } from '@tripwire/config';
 import { createDatabase, loadRunAssignments } from '@tripwire/db';
 import { z } from 'zod';
 import { adjustedRandIndex } from './ari.js';
+import { currentCommit } from './commit.js';
 import { CLUSTER_SIMILARITY_THRESHOLD } from './replay/incident.js';
 import { templateSimilarity } from './storm.js';
 
@@ -29,6 +30,7 @@ const { values } = parseArgs({
     summary: { type: 'string' },
     expect: { type: 'string', default: 'ack' },
     drained: { type: 'string' },
+    commit: { type: 'string' },
     'sample-ratio': { type: 'string', default: '0.01' },
   },
 });
@@ -39,6 +41,8 @@ const args = z
     to: z.iso.datetime(),
     /** When the worker's backlog was gone (default now): triage is read up to here. */
     drained: z.iso.datetime().optional(),
+    /** The commit the images were built from (run.sh records it at build time); default now's. */
+    commit: z.string().min(1).optional(),
     summary: z.string().min(1),
     expect: z.enum(['ack', 'shed']),
     'sample-ratio': z.coerce.number().min(0).max(1),
@@ -114,7 +118,16 @@ await pool.end();
 if (!assignments.ok) throw new Error(`reading the run's alerts: ${assignments.error.message}`);
 // Scored over the alerts clustered so far: a backlog left after the drain is reported, not waited on.
 const rows = assignments.value.flatMap((r) =>
-  r.incidentId === null ? [] : [{ truth: r.truth, incidentId: r.incidentId }],
+  r.incidentId === null || r.attachedAt === null
+    ? []
+    : [
+        {
+          truth: r.truth,
+          incidentId: r.incidentId,
+          receivedMs: r.receivedAt.getTime(),
+          attachedMs: r.attachedAt.getTime(),
+        },
+      ],
 );
 const ari = adjustedRandIndex(rows.map((r) => ({ truth: r.truth, cluster: r.incidentId })));
 const incidentsPerProblem = new Map<string, Set<string>>();
@@ -124,6 +137,19 @@ for (const row of rows) {
   incidentsPerProblem.set(row.truth, set);
 }
 const similarity = await templateSimilarity();
+
+// How fast the worker turned acknowledged alerts into incidents: from the first 202 to the last
+// clustered alert, and each alert's wait in between.
+const waits = rows.map((r) => r.attachedMs - r.receivedMs).sort((a, b) => a - b);
+const firstReceived = rows.reduce((min, r) => Math.min(min, r.receivedMs), Infinity);
+const lastAttached = rows.reduce((max, r) => Math.max(max, r.attachedMs), -Infinity);
+const seconds = (ms: number | undefined) => (ms === undefined ? null : ms / 1000);
+const clustering = {
+  perSecond:
+    lastAttached > firstReceived ? rows.length / ((lastAttached - firstReceived) / 1000) : null,
+  waitP50Seconds: seconds(waits[Math.floor(waits.length / 2)]),
+  waitMaxSeconds: seconds(waits.at(-1)),
+};
 
 // A sampled trace from the run, and how far through the pipeline it reaches.
 const STAGES = [
@@ -174,6 +200,8 @@ const totalResponses = server.responses.reduce((sum, r) => sum + r.value, 0);
 
 const report = {
   run: args.run,
+  commit: args.commit ?? (await currentCommit()) ?? 'unknown',
+  generatedAt: new Date().toISOString(),
   expect: args.expect,
   window: { from: args.from, to: args.to, seconds: windowSeconds },
   client: {
@@ -205,6 +233,7 @@ const report = {
     similarityAcross: similarity.across,
     threshold: CLUSTER_SIMILARITY_THRESHOLD,
   },
+  clustering,
   triage,
   trace: { sampled: traces.length, sampleRatio: args['sample-ratio'], furthest },
 };
@@ -212,6 +241,8 @@ const report = {
 const { acceptedMs } = report.client;
 const lines = [
   `## Storm run \`${args.run}\` (${args.expect === 'ack' ? 'high-water raised: nothing shed' : 'default high-water: shedding'})`,
+  '',
+  `Commit \`${report.commit}\` · report generated ${report.generatedAt}.`,
   '',
   `${String(report.client.requests)} requests at ${fixed(report.client.rate, 0)}/s over ${String(windowSeconds)} s (a ramp, then the steady rate); dropped iterations ${String(report.client.droppedIterations)}; checks passed ${fixed((report.client.checks ?? 0) * 100, 3)}%.`,
   '',
@@ -225,6 +256,7 @@ const lines = [
   `| Dead letters (max) | ${fixed(server.dlqMax, 0)} |`,
   `| Dedupe: alerts stored / clustered / incidents / problems | ${String(report.dedupe.alerts)} / ${String(report.dedupe.clustered)} / ${String(report.dedupe.incidents)} / ${String(report.dedupe.problems)} |`,
   `| Dedupe ARI | ${fixed(ari, 3)} |`,
+  `| Clustered per second (1 worker); ack to incident p50 / max | ${fixed(clustering.perSecond, 0)}; ${fixed(clustering.waitP50Seconds, 0)} s / ${fixed(clustering.waitMaxSeconds, 0)} s |`,
   `| Triage (baseline triager) runs, p50 / p95 | ${fixed(triage.runs, 0)}, ${ms(triage.p50)} / ${ms(triage.p95)} |`,
   `| Sampled traces (ratio ${String(args['sample-ratio'])}) | ${String(traces.length)}; furthest reaches \`${furthest ? (STAGES[furthest.reached - 1] ?? 'nothing') : 'none'}\`${furthest ? ` (${furthest.id})` : ''} |`,
   '',

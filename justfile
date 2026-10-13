@@ -122,6 +122,10 @@ test-rules:
 load-storm:
     infra/load/run.sh
 
+# Regenerate README.md's results table from the newest load-test and eval reports
+readme:
+    node scripts/readme-results.mjs
+
 # Build an image for this machine: `just image api|worker|console` (release.yml builds both architectures)
 image target='api':
     docker buildx build --target {{ target }} -t tripwire-{{ target }}:local --load .
