@@ -35,11 +35,12 @@ export interface AdmissionOptions {
 /**
  * Admission control on ingest queue depth. A background sampler reads the queue, so a request
  * costs no Redis round trip. Retry-After is the time to drain back to the high-water mark at the
- * measured rate, plus up to 25% jitter so shed senders don't all come back at once.
+ * rate the worker drains a backlog, plus up to 25% jitter so shed senders don't all come back at
+ * once.
  */
 export class QueueDepthAdmission implements AdmissionControl {
   private waiting = 0;
-  private samples: { at: number; finished: number }[] = [];
+  private samples: { at: number; finished: number; waiting: number }[] = [];
   private failing = false;
   private timer: NodeJS.Timeout | undefined;
   private readonly options: Required<AdmissionOptions>;
@@ -75,7 +76,7 @@ export class QueueDepthAdmission implements AdmissionControl {
       this.waiting = waiting;
       this.samples = [
         ...this.samples.filter((s) => s.at >= at - this.options.windowMs),
-        { at, finished },
+        { at, finished, waiting },
       ];
       this.failing = false;
     } catch (error) {
@@ -92,11 +93,22 @@ export class QueueDepthAdmission implements AdmissionControl {
 
   private retryAfterSeconds(): number {
     const { maxRetryAfterSeconds, highWater, random } = this.options;
-    const first = this.samples[0];
-    const last = this.samples.at(-1);
-    const elapsed = first && last ? (last.at - first.at) / 1000 : 0;
-    const perSecond = first && last && elapsed > 0 ? (last.finished - first.finished) / elapsed : 0;
+    const perSecond = this.drainPerSecond();
     const seconds = perSecond > 0 ? (this.waiting - highWater) / perSecond : maxRetryAfterSeconds;
     return Math.min(maxRetryAfterSeconds, Math.max(1, Math.ceil(seconds * (1 + random() * 0.25))));
+  }
+
+  /**
+   * Jobs finished per second since the queue last had nothing waiting: the worker's pace with a
+   * backlog in front of it. Before that, finishes follow arrivals, and idle time counts as no
+   * draining at all, so a storm hitting an idle worker would be told to wait up to the maximum
+   * while the worker could take it in seconds.
+   */
+  private drainPerSecond(): number {
+    const lastIdle = this.samples.findLastIndex((s) => s.waiting === 0);
+    const first = this.samples[Math.max(0, lastIdle)];
+    const last = this.samples.at(-1);
+    if (!first || !last || last.at <= first.at) return 0;
+    return (last.finished - first.finished) / ((last.at - first.at) / 1000);
   }
 }

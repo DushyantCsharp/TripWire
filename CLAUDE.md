@@ -135,7 +135,8 @@ POST /v1/webhooks/* → ingest → cluster (one job per alert) → triage (one j
     unique `ingests.idempotency_key` is the backstop once Redis has forgotten.
   - Admission control samples the ingest queue in the background. Above `INGEST_HIGH_WATER` waiting
     jobs it returns 503, with Retry-After = excess ÷ drain rate (from the worker's completed and
-    failed metrics), plus up to 25% jitter, capped at 60 s.
+    failed metrics, measured since the queue last had nothing waiting, so idle time before a storm
+    doesn't count as slow draining), plus up to 25% jitter, capped at 60 s.
 - **Every step is idempotent**, because a dead worker's job runs again:
   - Job ids are deterministic (`jobIds`; BullMQ forbids `:`), so re-adding a job is a no-op.
   - cluster runs in one transaction under a per-fingerprint advisory lock, and
