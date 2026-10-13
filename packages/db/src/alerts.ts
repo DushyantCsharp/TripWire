@@ -137,6 +137,25 @@ export function findRecentAlertsByFingerprint(db: Database, args: RecentAlertsAr
   return dbCall(() => recentAlertsByFingerprintQuery(db, args));
 }
 
+/**
+ * For the load test's dedupe score (evals load-report): every alert a k6 storm run sent, by the
+ * problem it stood for and the incident it joined (null until it is clustered). The run and the
+ * problem travel in annotations (load_run, load_truth), which neither the fingerprint nor the
+ * embedding reads.
+ */
+export function loadRunAssignments(db: Database, runId: string) {
+  return dbCall(() =>
+    db
+      .select({
+        truth: sql<string>`${alerts.rawPayload} -> 'annotations' ->> 'load_truth'`,
+        incidentId: incidentAlerts.incidentId,
+      })
+      .from(alerts)
+      .leftJoin(incidentAlerts, eq(incidentAlerts.alertId, alerts.id))
+      .where(sql`${alerts.rawPayload} -> 'annotations' ->> 'load_run' = ${runId}`),
+  );
+}
+
 /** A delivery's alert ids, so a retried ingest job can re-enqueue cluster jobs for all of them. */
 export function alertIdsForIngest(db: Database, ingestId: string) {
   return dbCall(async () => {

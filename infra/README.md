@@ -60,3 +60,32 @@ The root `Dockerfile` builds the api, worker and console (`just image api|worker
 machine); `release.yml` publishes both architectures to GHCR on a version tag. Their environment,
 ports and one-off commands are in CLAUDE.md, "CI and release". Locally they reach `just infra-up`'s
 services at `host.docker.internal` (Postgres on 15432, Redis on 16379).
+
+## Tripwire's telemetry
+
+Run the api and worker with `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:14318` (root `.env`; the
+dev scripts preload the SDK) and their traces reach Jaeger as `tripwire-api` and `tripwire-worker`,
+their metrics Prometheus. Grafana (http://localhost:13000) provisions the Tripwire folder's SLO
+dashboard from `grafana/provisioning/dashboards/json/` and two alert rules from
+`grafana/provisioning/alerting/rules.yaml`. Both are read at startup: edit the files, then
+`docker compose restart grafana`. What each metric means is in CLAUDE.md, "Observability".
+
+## Load test
+
+`just load-storm` (`load/run.sh`) builds the api and worker images and runs them next to this
+project's Redis, Postgres and collector (`load/compose.load.yaml`), then points k6
+(`load/storm.js`) at the api: signed Alertmanager deliveries of one alert each, 8 problems × 2 alert
+rules × 50 pods (`load/storm-groups.json`), ramping to `LOAD_RATE` (2000/s) over 20 s and holding it
+for 60 s. It runs twice, each run on its own queue prefix:
+
+1. **ack**: `INGEST_HIGH_WATER` raised so nothing is shed. k6 fails the run if the 202s' p99 is
+   50 ms or more, or if it couldn't keep the rate. The worker then drains for up to
+   `LOAD_DRAIN_SECONDS` (120) before the dedupe score.
+2. **shed**: the default high-water. A 503 is fine here only with a `Retry-After`.
+
+Each run leaves `load/results/<run>.json` (k6's summary), `<run>.stats.csv` (docker stats) and
+`<run>.report.{md,json}` (`pnpm --filter @tripwire/evals load-report`: server-side latency, shedding
+and queue depth from Prometheus, the dedupe ARI from Postgres, how far a sampled trace reaches from
+Jaeger). The storm uses its own database, `tripwire_load`, dropped and recreated each time, and
+deletes its Redis keys when it ends. CPU limits are 2 cores each for the api, worker and k6
+(`LOAD_*_CPUS`); the whole thing takes about 8 minutes of high CPU.

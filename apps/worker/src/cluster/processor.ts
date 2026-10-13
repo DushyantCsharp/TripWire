@@ -5,6 +5,7 @@ import {
   type Database,
   type FingerprintVersion,
 } from '@tripwire/db';
+import { enqueueing } from '@tripwire/telemetry';
 import type { Processor, Queue } from 'bullmq';
 import { FatalError, RetryableError } from '../errors.js';
 import { alertText, type Embedder } from '@tripwire/pipeline';
@@ -56,10 +57,13 @@ export function clusterProcessor(deps: ClusterDeps): Processor {
         trigger: 'new_incident',
         attempts: [],
       };
-      await deps.triageQueue.add('triage', triage, {
-        ...jobOptions.triage,
-        jobId: jobIds.triage(outcome.value.incidentId),
-      });
+      const jobId = jobIds.triage(outcome.value.incidentId);
+      await enqueueing(deps.triageQueue.name, jobId, (trace) =>
+        deps.triageQueue.add('triage', trace ? { ...triage, trace } : triage, {
+          ...jobOptions.triage,
+          jobId,
+        }),
+      );
     }
     return outcome.value;
   };

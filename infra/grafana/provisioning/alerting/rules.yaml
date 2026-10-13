@@ -1,0 +1,75 @@
+# Grafana-managed alert rules on Tripwire's SLOs (CLAUDE.md "Observability"). No contact point is
+# provisioned: they show in Grafana's alerting UI. Edit here and restart Grafana.
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: tripwire-slos
+    folder: Tripwire
+    interval: 1m
+    rules:
+      # The ingest target: p99 acknowledgement under 50 ms.
+      - uid: tripwire-ingest-ack-latency
+        title: IngestAckLatencyHigh
+        condition: threshold
+        data:
+          - refId: p99
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: p99
+              expr: histogram_quantile(0.99, sum by (le) (rate(ingest_ack_latency_seconds_bucket{status="202"}[5m])))
+              instant: true
+          - refId: threshold
+            datasourceUid: __expr__
+            model:
+              refId: threshold
+              type: threshold
+              expression: p99
+              conditions:
+                - evaluator: { type: gt, params: [0.05] }
+        for: 5m
+        # No traffic is not slow traffic.
+        noDataState: OK
+        execErrState: Error
+        labels:
+          severity: warning
+          slo: ingest
+        annotations:
+          summary: Webhook acknowledgement p99 is above 50 ms
+          description: >-
+            The ingest endpoint should acknowledge (202) within 50 ms at p99. Check the API's CPU,
+            Redis latency and whether admission control is shedding (Tripwire SLOs dashboard).
+
+      # Triage jobs that failed every attempt pile up for a person to redrive.
+      - uid: tripwire-dead-letters-growing
+        title: DeadLettersGrowing
+        condition: threshold
+        data:
+          - refId: growth
+            relativeTimeRange: { from: 1800, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: growth
+              # delta, not increase: dlq_size is a gauge, and a redrive must not read as growth.
+              expr: max(delta(dlq_size[30m]))
+              instant: true
+          - refId: threshold
+            datasourceUid: __expr__
+            model:
+              refId: threshold
+              type: threshold
+              expression: growth
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+        for: 10m
+        noDataState: OK
+        execErrState: Error
+        labels:
+          severity: warning
+          slo: triage
+        annotations:
+          summary: The triage dead-letter queue is growing
+          description: >-
+            Triage jobs are failing every attempt. Look at deadLetters in the console or GraphQL
+            for their error class and history, fix the cause, then redrive them.

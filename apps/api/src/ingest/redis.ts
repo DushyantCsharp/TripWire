@@ -1,5 +1,6 @@
 import { jobIds, jobOptions } from '@tripwire/contracts/queues';
 import { attempt, err, ok, type Result } from '@tripwire/result';
+import { enqueueing } from '@tripwire/telemetry';
 import type { Queue } from 'bullmq';
 import type { Redis } from 'ioredis';
 import { z } from 'zod';
@@ -60,10 +61,11 @@ export function bullmqIngestQueue(queue: Queue): IngestQueue {
   return {
     enqueue: (job) =>
       attempt(async () => {
-        await queue.add('ingest', job, {
-          ...jobOptions.ingest,
-          jobId: jobIds.ingest(job.ingestId),
-        });
+        const jobId = jobIds.ingest(job.ingestId);
+        // The webhook request's trace continues into the worker through the job's data.
+        await enqueueing(queue.name, jobId, (trace) =>
+          queue.add('ingest', trace ? { ...job, trace } : job, { ...jobOptions.ingest, jobId }),
+        );
       }, unavailable),
   };
 }

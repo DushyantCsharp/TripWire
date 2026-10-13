@@ -118,6 +118,10 @@ eval-record:
 test-rules:
     docker run --rm -v "$PWD/evals:/rules:ro" --entrypoint promtool quay.io/prometheus/prometheus:v3.13.1 test rules /rules/alert-rules.test.yaml
 
+# k6 alert storm at 2k req/s against the api and worker images, then the report (needs `just infra-up`; about 8 min)
+load-storm:
+    infra/load/run.sh
+
 # Build an image for this machine: `just image api|worker|console` (release.yml builds both architectures)
 image target='api':
     docker buildx build --target {{ target }} -t tripwire-{{ target }}:local --load .

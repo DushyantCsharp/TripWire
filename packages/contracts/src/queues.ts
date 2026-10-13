@@ -57,6 +57,16 @@ export const jobOptions = {
 
 const isoDateTime = z.iso.datetime({ offset: true });
 
+/**
+ * W3C trace context of the span that added the job (`@tripwire/telemetry`), so processing it joins
+ * the trace of whatever caused it. Absent when nothing is traced; a malformed one is dropped, never
+ * a reason to reject the job.
+ */
+const traceCarrier = z
+  .object({ traceparent: z.string().min(1), tracestate: z.string().optional() })
+  .optional()
+  .catch(undefined);
+
 export const ingestJobSchema = z.object({
   /** Database id of the delivery; the 202's `ingest_id` is its public form. */
   ingestId: z.uuid(),
@@ -66,10 +76,11 @@ export const ingestJobSchema = z.object({
   receivedAt: isoDateTime,
   /** The webhook body, already validated by the API; the worker parses it again for its source. */
   payload: z.unknown(),
+  trace: traceCarrier,
 });
 export type IngestJob = z.infer<typeof ingestJobSchema>;
 
-export const clusterJobSchema = z.object({ alertId: z.uuid() });
+export const clusterJobSchema = z.object({ alertId: z.uuid(), trace: traceCarrier });
 export type ClusterJob = z.infer<typeof clusterJobSchema>;
 
 export const triageAttemptSchema = z.object({
@@ -87,6 +98,7 @@ export const triageJobSchema = z.object({
   redrivenFrom: z.string().optional(),
   /** Appended by the worker after each failed attempt; becomes the dead-letter history. */
   attempts: z.array(triageAttemptSchema).default([]),
+  trace: traceCarrier,
 });
 export type TriageJob = z.infer<typeof triageJobSchema>;
 

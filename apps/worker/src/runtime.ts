@@ -2,12 +2,21 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import type { Triager } from '@tripwire/agent';
 import { DEAD_LETTER_QUEUES, QUEUES, triageJobSchema } from '@tripwire/contracts/queues';
 import type { Database } from '@tripwire/db';
-import { MetricsTime, Queue, type QueueOptions, Worker, type WorkerOptions } from 'bullmq';
+import { carrierOf, processing } from '@tripwire/telemetry';
+import {
+  MetricsTime,
+  type Processor,
+  Queue,
+  type QueueOptions,
+  Worker,
+  type WorkerOptions,
+} from 'bullmq';
 import { backfillProcessor } from './backfill.js';
 import { backoffStrategy } from './backoff.js';
 import type { Embedder } from '@tripwire/pipeline';
 import { clusterProcessor } from './cluster/processor.js';
 import type { WorkerConfig } from './config.js';
+import type { WorkerMetrics } from './telemetry.js';
 import { ingestProcessor } from './ingest/processor.js';
 import { deadLetterTriage, isFinalFailure } from './triage/dead-letter.js';
 import { triageProcessor } from './triage/processor.js';
@@ -22,6 +31,8 @@ export interface RuntimeDeps {
   readonly triager: Triager;
   readonly embedder: Embedder;
   readonly log: Log;
+  /** The worker's metrics; the triage processor builds its own when not given. */
+  readonly metrics?: WorkerMetrics | undefined;
 }
 
 export interface Runtime {
@@ -33,9 +44,18 @@ export interface Runtime {
   shutdown(timeoutMs?: number): Promise<'drained' | 'forced'>;
 }
 
+/**
+ * A processor run under its job's `process <queue>` span: a child of the span that added the job
+ * (carried in its data), so a webhook's trace continues through ingest, cluster and triage.
+ */
+function traced(queue: string, processor: Processor): Processor {
+  return (job, token, signal) =>
+    processing(queue, job, carrierOf(job.data), () => processor(job, token, signal));
+}
+
 export function startRuntime(
   config: WorkerConfig,
-  { db, triager, embedder, log }: RuntimeDeps,
+  { db, triager, embedder, log, metrics }: RuntimeDeps,
 ): Runtime {
   const queueOptions: QueueOptions = {
     connection: { url: config.REDIS_URL },
@@ -53,7 +73,10 @@ export function startRuntime(
   };
   const ingest = new Worker(
     QUEUES.ingest,
-    ingestProcessor({ db, clusterQueue, writeFingerprintV2: config.FINGERPRINT_V2_WRITE }),
+    traced(
+      QUEUES.ingest,
+      ingestProcessor({ db, clusterQueue, writeFingerprintV2: config.FINGERPRINT_V2_WRITE }),
+    ),
     // The API's admission control reads the ingest drain rate from these metrics.
     {
       ...common,
@@ -63,29 +86,36 @@ export function startRuntime(
   );
   const cluster = new Worker(
     QUEUES.cluster,
-    clusterProcessor({
-      db,
-      embedder,
-      triageQueue,
-      windowMs: config.CLUSTER_WINDOW_MINUTES * 60_000,
-      similarityThreshold: config.CLUSTER_SIMILARITY_THRESHOLD,
-      fingerprintVersion: config.FINGERPRINT_V2_READ ? 'v2' : 'v1',
-    }),
+    traced(
+      QUEUES.cluster,
+      clusterProcessor({
+        db,
+        embedder,
+        triageQueue,
+        windowMs: config.CLUSTER_WINDOW_MINUTES * 60_000,
+        similarityThreshold: config.CLUSTER_SIMILARITY_THRESHOLD,
+        fingerprintVersion: config.FINGERPRINT_V2_READ ? 'v2' : 'v1',
+      }),
+    ),
     { ...common, concurrency: config.CLUSTER_CONCURRENCY },
   );
   const triage = new Worker(
     QUEUES.triage,
-    triageProcessor({
-      db,
-      triager,
-      deadLetterQueue,
-      budget: {
-        maxInputTokens: config.TRIAGE_MAX_INPUT_TOKENS,
-        maxOutputTokens: config.TRIAGE_MAX_OUTPUT_TOKENS,
-        maxToolCalls: config.TRIAGE_MAX_TOOL_CALLS,
-        maxWallClockMs: config.TRIAGE_WALL_CLOCK_MS,
-      },
-    }),
+    traced(
+      QUEUES.triage,
+      triageProcessor({
+        db,
+        triager,
+        deadLetterQueue,
+        metrics,
+        budget: {
+          maxInputTokens: config.TRIAGE_MAX_INPUT_TOKENS,
+          maxOutputTokens: config.TRIAGE_MAX_OUTPUT_TOKENS,
+          maxToolCalls: config.TRIAGE_MAX_TOOL_CALLS,
+          maxWallClockMs: config.TRIAGE_WALL_CLOCK_MS,
+        },
+      }),
+    ),
     {
       ...common,
       concurrency: config.TRIAGE_CONCURRENCY,

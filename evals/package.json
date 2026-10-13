@@ -10,7 +10,8 @@
     "test:integration": "NODE_OPTIONS='--experimental-vm-modules --disable-warning=ExperimentalWarning' jest --config jest.integration.config.js",
     "capture": "tsx --conditions=@tripwire/source --env-file-if-exists=../.env src/capture/cli.ts",
     "eval": "tsx --conditions=@tripwire/source --env-file-if-exists=../.env src/harness/cli.ts",
-    "clean": "rm -rf .turbo"
+    "clean": "rm -rf .turbo",
+    "load-report": "tsx --conditions=@tripwire/source --env-file-if-exists=../.env src/load-report.ts"
   },
   "devDependencies": {
     "@jest/globals": "catalog:",

@@ -158,6 +158,9 @@ describe('anthropicModelClient', () => {
         refusal: undefined,
         // Cached input is still input: the budget counts all of it; the split prices it.
         usage: { inputTokens: 530, outputTokens: 20, cacheWriteTokens: 30, cacheReadTokens: 400 },
+        // For the chat span's gen_ai.response.model and gen_ai.response.id.
+        model: 'claude-opus-5-5',
+        id: 'msg_1',
       },
     });
   });

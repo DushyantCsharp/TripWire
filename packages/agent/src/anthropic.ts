@@ -122,6 +122,8 @@ function fromMessage(message: Anthropic.Message): ModelResponse {
     }),
     stopReason: stopReason(message.stop_reason),
     refusal: message.stop_details?.category ?? undefined,
+    model: message.model,
+    id: message.id,
     usage: {
       // Cached input is still input: the budget counts all of it.
       inputTokens: usage.input_tokens + cacheWriteTokens + cacheReadTokens,

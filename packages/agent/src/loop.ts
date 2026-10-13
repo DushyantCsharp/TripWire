@@ -1,7 +1,16 @@
+import { type Context, context, type Span, trace } from '@opentelemetry/api';
 import { err, ok, type Result } from '@tripwire/result';
 import { z } from 'zod';
 import { rankByAlertLabels } from './baseline.js';
 import { canonicalJson } from './canonical.js';
+import {
+  endChatSpan,
+  endRunSpan,
+  endToolSpan,
+  startChatSpan,
+  startRunSpan,
+  startToolSpan,
+} from './genai.js';
 import type {
   Effort,
   ModelBlock,
@@ -136,6 +145,12 @@ export interface ClaudeTriagerOptions {
   readonly maxAlerts?: number | undefined;
   readonly clock?: Clock | undefined;
   readonly onEvent?: ((event: TriageEvent) => void) | undefined;
+  /**
+   * Record prompts, completions, tool arguments and results on the run's spans (the GenAI
+   * conventions' content attributes). Off by default: they hold the incident and whatever the logs
+   * said. The worker sets it from OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT.
+   */
+  readonly captureContent?: boolean | undefined;
 }
 
 /**
@@ -188,6 +203,8 @@ class TriageRun {
   private pendingChars: number;
   private started = 0;
   private readonly deadline = new AbortController();
+  // The run's span, as the parent of its model and tool call spans (genai.ts).
+  private spanContext: Context = context.active();
 
   constructor(
     private readonly options: ClaudeTriagerOptions,
@@ -205,16 +222,34 @@ class TriageRun {
 
   async run(): Promise<Result<TriageReport, TriageError>> {
     this.started = this.clock.now();
+    const span = startRunSpan(context.active(), {
+      model: this.options.model,
+      runKey: this.triage.runKey,
+      incidentId: this.input.incidentId,
+    });
+    this.spanContext = trace.setSpan(context.active(), span);
     const cancelDeadline = this.clock.setTimer(this.budget.maxWallClockMs, () => {
       this.deadline.abort();
     });
+    let result: Result<TriageReport, TriageError> | undefined;
     try {
-      const result = await this.loop();
+      result = await this.loop();
       if (result.ok) this.options.onEvent?.({ type: 'stop', stopReason: result.value.stopReason });
       return result;
     } finally {
       cancelDeadline();
+      if (result) endRunSpan(span, result);
+      else span.end();
     }
+  }
+
+  private get captureContent(): boolean {
+    return this.options.captureContent ?? false;
+  }
+
+  /** Runs `fn` with `span` as the active span, so what it calls (HTTP, say) nests under it. */
+  private within<T>(span: Span, fn: () => Promise<T>): Promise<T> {
+    return context.with(trace.setSpan(this.spanContext, span), fn);
   }
 
   private get signal(): AbortSignal {
@@ -250,7 +285,11 @@ class TriageRun {
         messages: [...this.messages],
       };
       const startedCall = this.clock.now();
-      const response = await this.options.client.complete(request, { signal: this.signal });
+      const chat = startChatSpan(this.spanContext, request, this.captureContent);
+      const response = await this.within(chat, () =>
+        this.options.client.complete(request, { signal: this.signal }),
+      );
+      endChatSpan(chat, response, this.captureContent);
       if (!response.ok) {
         // The call may have failed because a signal fired while it ran.
         if (this.cancelled()) return err(CANCELLED);
@@ -410,14 +449,15 @@ class TriageRun {
       calls.map((call, index) => {
         if (index >= allowance) {
           this.options.onEvent?.({ type: 'tool_call', name: call.name, outcome: 'refused', ms: 0 });
-          return Promise.resolve(
-            errorResult(call.id, call.name, {
-              error: 'not_run',
-              message: reporting
-                ? 'tools are no longer available: reply with the report'
-                : `the limit of ${String(this.budget.maxToolCalls)} tool calls is reached`,
-            }),
-          );
+          const refused = errorResult(call.id, call.name, {
+            error: 'not_run',
+            message: reporting
+              ? 'tools are no longer available: reply with the report'
+              : `the limit of ${String(this.budget.maxToolCalls)} tool calls is reached`,
+          });
+          const span = startToolSpan(this.spanContext, call, this.captureContent);
+          endToolSpan(span, 'refused', refused, this.captureContent);
+          return Promise.resolve(refused);
         }
         return this.runTool(call);
       }),
@@ -426,6 +466,7 @@ class TriageRun {
 
   private async runTool(call: Extract<ResponseBlock, { type: 'tool_use' }>): Promise<ModelBlock> {
     const started = this.clock.now();
+    const span = startToolSpan(this.spanContext, call, this.captureContent);
     const done = (outcome: ToolOutcome, block: ModelBlock) => {
       this.options.onEvent?.({
         type: 'tool_call',
@@ -433,6 +474,7 @@ class TriageRun {
         outcome,
         ms: this.clock.now() - started,
       });
+      endToolSpan(span, outcome, block, this.captureContent);
       return block;
     };
     if (call.name === PROPOSE_ACTION) {
@@ -476,7 +518,11 @@ class TriageRun {
         }),
       );
     }
-    const [outcome, block] = await this.readTool(call.name, call.id, call.input);
+    // Narrowed above; a closure wouldn't keep the narrowing of call.name.
+    const name = call.name;
+    const [outcome, block] = await this.within(span, () =>
+      this.readTool(name, call.id, call.input),
+    );
     return done(outcome, block);
   }
 

@@ -32,7 +32,8 @@ export async function buildServer(deps: ServerDeps, options: FastifyServerOption
   const app = Fastify(options);
 
   await app.register(
-    (v1, _opts, done) => {
+    // Named: Fastify names an anonymous plugin after its source, and the request spans after that.
+    function health(v1, _opts, done) {
       v1.get('/healthz', (_request, reply) =>
         reply.send({ status: 'ok' } satisfies components['schemas']['Health']),
       );

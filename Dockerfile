@@ -52,20 +52,21 @@ USER 65532:65532
 
 # REST and GraphQL on :4000. Needs REDIS_URL and WEBHOOK_SECRETS (apps/api/src/config.ts).
 FROM runtime AS api
-ENV API_HOST=0.0.0.0 API_PORT=4000
+ENV API_HOST=0.0.0.0 API_PORT=4000 OTEL_SERVICE_NAME=tripwire-api
 COPY --from=api-build --chown=65532:65532 /out/ ./
 EXPOSE 4000
-CMD ["dist/main.js"]
+# OpenTelemetry starts first (traces and metrics to OTEL_EXPORTER_OTLP_ENDPOINT, when it's set).
+CMD ["--import", "@tripwire/telemetry/register", "dist/main.js"]
 
 # BullMQ workers. Needs REDIS_URL and DATABASE_URL (apps/worker/src/config.ts). It drains for up to
 # SHUTDOWN_TIMEOUT_MS (75s) on SIGTERM: give it a stop timeout longer than that. One-off commands:
 #   node_modules/@tripwire/db/dist/cli.js up    migrations (the image's entrypoint is node)
 #   dist/runbooks-index.js                     index /app/runbooks for get_runbook
 FROM runtime AS worker
-ENV RUNBOOKS_DIR=/app/runbooks
+ENV RUNBOOKS_DIR=/app/runbooks OTEL_SERVICE_NAME=tripwire-worker
 COPY --from=worker-build --chown=65532:65532 /out/ ./
 COPY --chown=65532:65532 runbooks/ ./runbooks/
-CMD ["dist/main.js"]
+CMD ["--import", "@tripwire/telemetry/register", "dist/main.js"]
 
 # The console on :3000. GRAPHQL_URL is read per request, so one image serves any deployment.
 FROM runtime AS console

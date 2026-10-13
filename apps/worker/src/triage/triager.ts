@@ -2,7 +2,10 @@ import {
   anthropicModelClient,
   baselineTriager,
   claudeTriager,
+  costUsdMicros,
   type ModelClient,
+  type ModelPricing,
+  type ModelUsage,
   pricingFor,
   telemetryTools,
   type Triager,
@@ -11,6 +14,7 @@ import type { Database } from '@tripwire/db';
 import type { Embedder } from '@tripwire/pipeline';
 import type { WorkerConfig } from '../config.js';
 import type { Log } from '../runtime.js';
+import { type WorkerMetrics, workerMetrics } from '../telemetry.js';
 import { telemetryPorts } from './tools.js';
 
 export interface TriagerDeps {
@@ -19,6 +23,8 @@ export interface TriagerDeps {
   readonly log: Log;
   /** Replaces the Anthropic client, for tests. */
   readonly client?: ModelClient | undefined;
+  /** The worker's metrics; built with the triager when not given. */
+  readonly metrics?: WorkerMetrics | undefined;
 }
 
 /**
@@ -32,14 +38,40 @@ export function createTriager(config: WorkerConfig, deps: TriagerDeps): Triager 
   const apiKey = config.ANTHROPIC_API_KEY;
   // workerEnv refuses TRIAGER=claude without a key, so this is a bug if it happens.
   if (apiKey === undefined) throw new Error('TRIAGER=claude without ANTHROPIC_API_KEY');
+  const metrics = deps.metrics ?? workerMetrics();
+  const pricing = pricingFor(config.TRIAGE_MODEL);
   return claudeTriager({
     model: config.TRIAGE_MODEL,
     client: deps.client ?? anthropicModelClient({ apiKey, timeoutMs: config.TRIAGE_WALL_CLOCK_MS }),
     tools: telemetryTools(telemetryPorts(config, deps)),
     effort: config.TRIAGE_EFFORT,
-    pricing: pricingFor(config.TRIAGE_MODEL),
+    pricing,
+    captureContent: config.OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT,
     onEvent: (event) => {
       deps.log.info(`triage ${event.type}`, { ...event });
+      // Per model call, so a run that fails afterwards still counts what it spent.
+      if (event.type === 'model_call') {
+        recordUsage(metrics, config.TRIAGE_MODEL, pricing, event.usage);
+      }
     },
   });
+}
+
+/** Tokens by type (input counts the cached parts too) and dollars, for one model call. */
+export function recordUsage(
+  metrics: WorkerMetrics,
+  model: string,
+  pricing: ModelPricing | undefined,
+  usage: ModelUsage,
+): void {
+  const tokens: [string, number][] = [
+    ['input', usage.inputTokens],
+    ['output', usage.outputTokens],
+    ['cache_read', usage.cacheReadTokens],
+    ['cache_write', usage.cacheWriteTokens],
+  ];
+  for (const [type, count] of tokens) {
+    if (count > 0) metrics.tokens.add(count, { model, type });
+  }
+  metrics.cost.add(costUsdMicros(usage, pricing) / 1_000_000, { model });
 }

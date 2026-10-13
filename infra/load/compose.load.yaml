@@ -1,0 +1,75 @@
+# The load test's overlay on infra/docker-compose.yml: Tripwire's api and worker images on the same
+# network as Redis, Postgres and the collector, and k6 next to them (infra/load/run.sh drives it;
+# `just load-storm`). Paths are relative to infra/, the first compose file's directory.
+services:
+  api:
+    build: { context: .., target: api }
+    image: tripwire-api:load
+    environment:
+      REDIS_URL: redis://redis:6379
+      WEBHOOK_SECRETS: ${LOAD_WEBHOOK_SECRET:-load-test-only-secret-0123456789}
+      QUEUE_PREFIX: ${LOAD_QUEUE_PREFIX:-load}
+      INGEST_HIGH_WATER: ${LOAD_HIGH_WATER:-10000}
+      # Request logs at 2k/s would cost the latency being measured.
+      LOG_LEVEL: warn
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      # About 8 spans a request: at 2k/s, keep one trace in a hundred (the report says so).
+      OTEL_TRACES_SAMPLER: parentbased_traceidratio
+      OTEL_TRACES_SAMPLER_ARG: ${LOAD_SAMPLE_RATIO:-0.01}
+      OTEL_METRIC_EXPORT_INTERVAL: '5000'
+    depends_on:
+      redis: { condition: service_healthy }
+      otel-collector: { condition: service_started }
+    healthcheck:
+      test:
+        [
+          CMD,
+          /nodejs/bin/node,
+          -e,
+          "fetch('http://127.0.0.1:4000/v1/healthz').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))",
+        ]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+    cpus: ${LOAD_API_CPUS:-2}
+
+  worker:
+    build: { context: .., target: worker }
+    image: tripwire-worker:load
+    environment:
+      REDIS_URL: redis://redis:6379
+      # Its own database, which run.sh recreates: the storm's alerts never mix with dev data.
+      DATABASE_URL: postgres://tripwire:tripwire@postgres:5432/${LOAD_DATABASE:-tripwire_load}
+      QUEUE_PREFIX: ${LOAD_QUEUE_PREFIX:-load}
+      # The storm never spends: the model-free triager.
+      TRIAGER: baseline
+      LOG_LEVEL: warn
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      OTEL_TRACES_SAMPLER: parentbased_traceidratio
+      OTEL_TRACES_SAMPLER_ARG: ${LOAD_SAMPLE_RATIO:-0.01}
+      OTEL_METRIC_EXPORT_INTERVAL: '5000'
+    depends_on:
+      redis: { condition: service_healthy }
+      postgres: { condition: service_healthy }
+    cpus: ${LOAD_WORKER_CPUS:-2}
+    # It drains in-flight jobs for up to 75 s on SIGTERM.
+    stop_grace_period: 90s
+
+  k6:
+    image: grafana/k6:2.3.0@sha256:e66db15b860113878fa74670e31f5e274830b7b6e42c8bff28b2f2d86a257603
+    profiles: [load]
+    command: [run, --quiet, /load/storm.js]
+    environment:
+      API_URL: http://api:4000
+      WEBHOOK_SECRET: ${LOAD_WEBHOOK_SECRET:-load-test-only-secret-0123456789}
+      RUN_ID: ${LOAD_RUN_ID:-storm}
+      RATE: ${LOAD_RATE:-2000}
+      RAMP: ${LOAD_RAMP:-20s}
+      STEADY: ${LOAD_STEADY:-60s}
+      EXPECT: ${LOAD_EXPECT:-ack}
+    volumes:
+      - ./load:/load:ro
+      - ./load/results:/results
+    depends_on:
+      api: { condition: service_healthy }
+    cpus: ${LOAD_K6_CPUS:-2}

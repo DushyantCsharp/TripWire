@@ -1,3 +1,4 @@
+import { SpanStatusCode } from '@opentelemetry/api';
 import type { TriageBudget, Triager } from '@tripwire/agent';
 import { triageJobSchema, type TriageAttempt } from '@tripwire/contracts/queues';
 import {
@@ -6,8 +7,10 @@ import {
   loadIncidentForTriage,
   type Database,
 } from '@tripwire/db';
+import { tracer } from '@tripwire/telemetry';
 import type { Job, Processor, Queue } from 'bullmq';
 import { FatalError, RetryableError, toJobError } from '../errors.js';
+import { type WorkerMetrics, workerMetrics } from '../telemetry.js';
 import { deadLetterTriage, isFinalFailure } from './dead-letter.js';
 
 export interface TriageDeps {
@@ -15,6 +18,8 @@ export interface TriageDeps {
   readonly triager: Triager;
   readonly deadLetterQueue: Queue;
   readonly budget: TriageBudget;
+  /** The worker's metrics; built with the processor when not given. */
+  readonly metrics?: WorkerMetrics | undefined;
 }
 
 /**
@@ -24,9 +29,10 @@ export interface TriageDeps {
  * the job to the dead-letter queue.
  */
 export function triageProcessor(deps: TriageDeps): Processor {
+  const metrics = deps.metrics ?? workerMetrics();
   return async (job, _token, signal) => {
     try {
-      return await triage(deps, job, signal);
+      return await triage(deps, metrics, job, signal);
     } catch (cause) {
       const error = cause instanceof Error ? cause : new Error(String(cause));
       const parsed = triageJobSchema.safeParse(job.data);
@@ -48,6 +54,7 @@ export function triageProcessor(deps: TriageDeps): Processor {
 
 async function triage(
   { db, triager, budget }: TriageDeps,
+  metrics: WorkerMetrics,
   job: Job,
   signal: AbortSignal | undefined,
 ) {
@@ -69,9 +76,10 @@ async function triage(
   // The job id keys the run across retries: proposals derive their ids from it, so a retried
   // attempt proposes the same rows. A report cut short by a limit is still a report: it's stored
   // with its stop reason, not retried (a retry would hit the same limit, at the same cost).
-  const report = await triager.triage(
-    { ...incident.value, incidentId: incident.value.id },
-    { budget, runKey: job.id, signal },
+  const runKey = job.id;
+  const input = { ...incident.value, incidentId: incident.value.id };
+  const report = await measuredTriage(metrics, triager, incidentId, () =>
+    triager.triage(input, { budget, runKey, signal }),
   );
   if (!report.ok) throw toJobError(report.error);
 
@@ -82,4 +90,45 @@ async function triage(
     written: completed.value.written,
     stopReason: report.value.stopReason,
   };
+}
+
+type TriageResult = Awaited<ReturnType<Triager['triage']>>;
+
+/**
+ * Runs the triager under a `triage` span (the baseline's runs too; Claude's loop nests its model
+ * and tool spans inside) and records how long it took, by model, stop reason and outcome.
+ */
+export async function measuredTriage(
+  metrics: WorkerMetrics,
+  triager: Triager,
+  incidentId: string,
+  run: () => Promise<TriageResult>,
+): Promise<TriageResult> {
+  const started = performance.now();
+  return tracer().startActiveSpan(
+    'triage',
+    { attributes: { 'tripwire.triager': triager.model, 'tripwire.incident.id': incidentId } },
+    async (span) => {
+      try {
+        const report = await run();
+        const stopReason = report.ok ? report.value.stopReason : report.error.kind;
+        const outcome = !report.ok
+          ? 'failed'
+          : report.value.stopReason === 'report_submitted'
+            ? 'complete'
+            : 'partial';
+        span.setAttributes({ 'tripwire.stop_reason': stopReason, 'tripwire.outcome': outcome });
+        if (!report.ok)
+          span.setStatus({ code: SpanStatusCode.ERROR, message: report.error.message });
+        metrics.triageDuration.record((performance.now() - started) / 1000, {
+          model: triager.model,
+          stop_reason: stopReason,
+          outcome,
+        });
+        return report;
+      } finally {
+        span.end();
+      }
+    },
+  );
 }

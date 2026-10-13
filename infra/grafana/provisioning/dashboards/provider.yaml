@@ -1,0 +1,12 @@
+# Tripwire's dashboards, from the JSON next to this file (mounted read-only by
+# infra/docker-compose.yml). Edit the JSON and restart Grafana; edits made in the UI aren't kept.
+apiVersion: 1
+
+providers:
+  - name: tripwire
+    folder: Tripwire
+    type: file
+    disableDeletion: true
+    allowUiUpdates: false
+    options:
+      path: /etc/grafana/provisioning/dashboards/json

@@ -47,6 +47,11 @@ export const workerEnv = baseEnv
     TRIAGE_MODEL: z.string().min(1).default('claude-opus-5-5'),
     /** Thinking depth. Thinking is output, and a run has 4k output tokens. */
     TRIAGE_EFFORT: z.enum(['low', 'medium', 'high']).default('low'),
+    /**
+     * Put prompts, completions, tool arguments and results on the triage spans (the GenAI
+     * conventions' variable). Off: they hold the incident and whatever the logs said.
+     */
+    OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT: z.stringbool().default(false),
     // The telemetry the tools read. A tool whose backend isn't configured answers "unavailable",
     // except list_deploys, which isn't offered without a change feed.
     /** OpenSearch holding OpenTelemetry logs (the OTel demo's: http://localhost:29200). */

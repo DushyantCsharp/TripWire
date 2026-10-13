@@ -32,6 +32,7 @@ Node 22 (`.nvmrc`), pnpm 10, `just` (run `just` alone to list recipes).
 | Alert rule tests (Docker)          | `just test-rules`                                                             |
 | Script tests                       | `pnpm test:scripts`                                                           |
 | Build an image                     | `just image api` (or `worker`, `console`)                                     |
+| Load test (after `just infra-up`)  | `just load-storm` (k6, 2k req/s; reports in `infra/load/results/`)            |
 
 ## Layout
 
@@ -43,7 +44,7 @@ packages/agent      tool-use loop, tools and their telemetry backends, policies 
 packages/pipeline   steps the worker and evals share: alert normalising, embedding, runbook index
 packages/contracts  OpenAPI + GraphQL SDL (source of truth), generated types and clients, queue names
 packages/db         Drizzle schema and migrations: the only package that talks to Postgres
-packages/telemetry  OpenTelemetry bootstrap
+packages/telemetry  OpenTelemetry: the SDK preload, BullMQ trace propagation, tracer and meter
 packages/config     zod-validated env
 packages/result     Result type
 evals/              golden set, its capture script, and the scoring harness
@@ -189,6 +190,56 @@ spending; `just chaos` forces the baseline).
   `list_deploys` didn't return for that service, scaling to 0, duplicates, and more than 3. The
   summary is rendered from the payload, never model text. Ids derive from the job id and payload
   hash, so a retry proposes the same rows.
+
+## Observability
+
+`packages/telemetry` exports over OTLP/HTTP to `just infra-up`'s collector: traces to Jaeger,
+metrics to Prometheus, dashboards and alert rules in Grafana (`infra/grafana/provisioning/`).
+
+- **The SDK starts only in the preload**, `--import @tripwire/telemetry/register` (the apps' `dev`
+  and `start` scripts, the images' CMD): ESM imports are hoisted, so `main.ts` would start it too
+  late to patch pg and ioredis. Without `OTEL_EXPORTER_OTLP_ENDPOINT`, or with
+  `OTEL_SDK_DISABLED=true`, it starts nothing, so tests, `just chaos` and the evals run untraced.
+  Everything else uses only `@opentelemetry/api`, which does nothing without the SDK.
+  - Instrumented: http, undici (Anthropic and the tool backends), Fastify (`@fastify/otel`; no hook
+    spans, health checks ignored), and pg and ioredis only inside a span, so BullMQ's polling starts
+    no traces. The loader hook is scoped to `pg`, `pg-pool` and `ioredis`: unscoped,
+    import-in-the-middle breaks tsx's `.ts` modules.
+  - Create instruments when building the server, processor or triager, never at module load: the
+    metrics API has no proxy, so an instrument created before the SDK starts never records.
+- **One trace from webhook to triage.** Every enqueue goes through `enqueueing`/`enqueueingMany`: a
+  PRODUCER span `send <queue>` whose W3C context goes into the job data as `trace`. `runtime.ts`
+  runs every processor in `processing`: a CONSUMER span `process <queue>`, a child of that context
+  and linked to it. The job schemas keep `trace` and drop a malformed one rather than fail the job;
+  without the SDK no job has one. A redrive starts a new trace linked to the original. Problem
+  responses carry `trace_id`.
+- **GenAI spans** (`packages/agent/src/genai.ts`, the `gen_ai.*` conventions): `invoke_agent
+tripwire-triage` per run, `chat <model>` per model call (tokens including cache, finish reason,
+  response model and id), `execute_tool <name>` per tool call, refused ones included. Prompts,
+  completions, tool arguments and results are recorded only with the worker's
+  `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT=true` (default false): they hold incident and
+  log text.
+- **Metrics**, by their Prometheus names. `scripts/dashboards.test.mjs` checks every dashboard and
+  rule query against the instruments in `apps/*/src/telemetry.ts`.
+
+  | Metric                                 | Labels                                                                    | Recorded by                                   |
+  | -------------------------------------- | ------------------------------------------------------------------------- | --------------------------------------------- |
+  | `ingest_ack_latency_seconds` histogram | `route`, `status`                                                         | api, every webhook response, 503s included    |
+  | `shed_requests_total`                  | `reason`: overloaded, idempotency_unavailable, queue_unavailable          | api                                           |
+  | `queue_depth`                          | `queue`, `state`                                                          | api, at each export, so with workers down too |
+  | `dlq_size`                             | `queue`                                                                   | api                                           |
+  | `triage_duration_seconds` histogram    | `model`, `stop_reason`, `outcome`                                         | worker, per run                               |
+  | `tokens_total`                         | `model`, `type`: input (cached included), output, cache_read, cache_write | worker, per model call                        |
+  | `cost_usd_total`                       | `model`                                                                   | worker, per model call                        |
+
+- **Grafana** (http://localhost:13000, folder Tripwire): the SLO dashboard (ingest p99 against
+  50 ms, triage p50/p95 against 25 s/60 s, DLQ size and growth, cost per incident, tokens, queue
+  depth, traces) and two alert rules, IngestAckLatencyHigh and DeadLettersGrowing. No contact point
+  is configured. Edit the files and restart Grafana; UI edits aren't kept.
+- **Load test** (`just load-storm`, `infra/load/`): k6 sends signed Alertmanager deliveries at
+  2k req/s to the api and worker images, twice. First with the high-water raised, for ack latency
+  and then the dedupe score (ARI against the problem each alert stood for); then at the default,
+  where it sheds. Traces are sampled at 1%. The storm has its own database, `tripwire_load`.
 
 ## TypeScript
 

@@ -2,6 +2,7 @@
 // production (redis.ts, admission.ts); tests use in-memory fakes.
 import type { IngestJob } from '@tripwire/contracts/queues';
 import type { Result } from '@tripwire/result';
+import type { IngestMetrics } from '../telemetry.js';
 
 export interface DependencyError {
   readonly kind: 'dependency_unavailable';
@@ -41,4 +42,6 @@ export interface IngestDeps {
   readonly secrets: readonly string[];
   readonly now?: () => Date;
   readonly newId?: () => string;
+  /** Ack latency and shedding; built with the routes when not given. */
+  readonly metrics?: IngestMetrics | undefined;
 }

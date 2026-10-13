@@ -1,5 +1,6 @@
 import { ingestJobSchema, jobIds, jobOptions } from '@tripwire/contracts/queues';
 import { alertIdsForIngest, recordIngest, type Database } from '@tripwire/db';
+import { enqueueingMany } from '@tripwire/telemetry';
 import type { Processor, Queue } from 'bullmq';
 import { FatalError, RetryableError } from '../errors.js';
 import { normalizeAlerts } from '@tripwire/pipeline';
@@ -54,12 +55,18 @@ export function ingestProcessor({ db, clusterQueue, writeFingerprintV2 }: Ingest
       alertIds = existing.value;
     }
 
-    await clusterQueue.addBulk(
-      alertIds.map((alertId) => ({
-        name: 'cluster',
-        data: { alertId },
-        opts: { ...jobOptions.cluster, jobId: jobIds.cluster(alertId) },
-      })),
+    // One `send cluster` span per alert, each carried in its job: the delivery's trace fans out.
+    await enqueueingMany(clusterQueue.name, alertIds.map(jobIds.cluster), (traces) =>
+      clusterQueue.addBulk(
+        alertIds.map((alertId, index) => {
+          const trace = traces[index];
+          return {
+            name: 'cluster',
+            data: trace ? { alertId, trace } : { alertId },
+            opts: { ...jobOptions.cluster, jobId: jobIds.cluster(alertId) },
+          };
+        }),
+      ),
     );
     return {
       ingestId: recorded.value.ingestId,

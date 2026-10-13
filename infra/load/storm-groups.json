@@ -1,0 +1,111 @@
+[
+  {
+    "truth": "payment-charge",
+    "service": "payment",
+    "alerts": [
+      {
+        "alertname": "PaymentChargeErrors",
+        "summary": "payment Charge requests fail with Invalid token for gold tier users"
+      },
+      {
+        "alertname": "PaymentHighErrorRate",
+        "summary": "payment is failing Charge requests with Invalid token errors"
+      }
+    ]
+  },
+  {
+    "truth": "cart-valkey",
+    "service": "cart",
+    "alerts": [
+      {
+        "alertname": "CartValkeyTimeouts",
+        "summary": "cart cannot reach valkey: GetCart calls time out"
+      },
+      {
+        "alertname": "CartLatencyHigh",
+        "summary": "cart GetCart latency is high: valkey calls time out"
+      }
+    ]
+  },
+  {
+    "truth": "checkout-kafka",
+    "service": "checkout",
+    "alerts": [
+      {
+        "alertname": "CheckoutKafkaPublishFailures",
+        "summary": "checkout fails to publish orders to kafka"
+      },
+      {
+        "alertname": "CheckoutOrderQueueErrors",
+        "summary": "checkout order publishing to kafka is failing"
+      }
+    ]
+  },
+  {
+    "truth": "ad-cpu",
+    "service": "ad",
+    "alerts": [
+      { "alertname": "AdHighCpu", "summary": "ad CPU is saturated serving GetAds" },
+      {
+        "alertname": "AdSlowResponses",
+        "summary": "ad GetAds responses are slow with CPU saturated"
+      }
+    ]
+  },
+  {
+    "truth": "email-memory",
+    "service": "email",
+    "alerts": [
+      {
+        "alertname": "EmailMemoryGrowing",
+        "summary": "email memory grows without bound until it restarts"
+      },
+      {
+        "alertname": "EmailMemoryNearLimit",
+        "summary": "email memory usage is growing towards its limit"
+      }
+    ]
+  },
+  {
+    "truth": "catalog-locks",
+    "service": "product-catalog",
+    "alerts": [
+      {
+        "alertname": "ProductCatalogLockWaits",
+        "summary": "product-catalog queries wait on database lock contention"
+      },
+      {
+        "alertname": "ProductCatalogSlowQueries",
+        "summary": "product-catalog database queries are slow waiting on locks"
+      }
+    ]
+  },
+  {
+    "truth": "shipping-latency",
+    "service": "shipping",
+    "alerts": [
+      {
+        "alertname": "ShippingQuoteSlow",
+        "summary": "shipping GetQuote latency is above 5s for international orders"
+      },
+      {
+        "alertname": "ShippingLatencyHigh",
+        "summary": "shipping GetQuote requests for international orders are slow"
+      }
+    ]
+  },
+  {
+    "truth": "recommendation-cache",
+    "service": "recommendation",
+    "alerts": [
+      {
+        "alertname": "RecommendationCacheErrors",
+        "summary": "recommendation cache lookups are failing and falling back to the catalog"
+      },
+      {
+        "alertname": "RecommendationErrorRate",
+        "summary": "recommendation is failing requests because cache lookups error"
+      }
+    ]
+  }
+]

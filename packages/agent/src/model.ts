@@ -72,6 +72,9 @@ export interface ModelResponse {
   /** The category the provider gave for a refusal. */
   readonly refusal?: string | undefined;
   readonly usage: ModelUsage;
+  /** The model that answered and the provider's id for the response, as it reported them. */
+  readonly model?: string | undefined;
+  readonly id?: string | undefined;
 }
 
 export interface ModelClient {

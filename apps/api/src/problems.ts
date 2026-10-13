@@ -1,4 +1,5 @@
 // RFC 9457 problem details, matching the response schemas in packages/contracts/schema/openapi.yaml.
+import { activeTraceId } from '@tripwire/telemetry';
 import type { FastifyReply } from 'fastify';
 
 export interface Problem {
@@ -66,9 +67,11 @@ export function sendProblem(
   problem: Problem,
   headers: Record<string, string> = {},
 ) {
+  // The trace to look at when asking why, if this request was traced.
+  const traceId = activeTraceId();
   return reply
     .code(problem.status)
     .headers(headers)
     .type('application/problem+json')
-    .send({ ...problem, instance: reply.request.url });
+    .send({ ...problem, instance: reply.request.url, ...(traceId ? { trace_id: traceId } : {}) });
 }

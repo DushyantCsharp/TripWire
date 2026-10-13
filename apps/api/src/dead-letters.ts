@@ -6,6 +6,7 @@ import {
   type TriageJob,
 } from '@tripwire/contracts/queues';
 import { attempt, err, ok, type Result } from '@tripwire/result';
+import { enqueueing, linksFrom } from '@tripwire/telemetry';
 import type { Queue } from 'bullmq';
 import type { DependencyError } from './ingest/ports.js';
 
@@ -64,7 +65,17 @@ export function bullmqDeadLetters(deadLetterQueue: Queue, triageQueue: Queue): D
         attempts: [],
       };
       const moved = await attempt(async () => {
-        await triageQueue.add('triage', job, { ...jobOptions.triage, jobId });
+        // A new trace for the redrive, linked to the one the job failed in.
+        await enqueueing(
+          triageQueue.name,
+          jobId,
+          (trace) =>
+            triageQueue.add('triage', trace ? { ...job, trace } : job, {
+              ...jobOptions.triage,
+              jobId,
+            }),
+          { links: linksFrom(parsed.data.job.trace) },
+        );
         await deadLetterQueue.remove(id);
       }, unavailable);
       if (!moved.ok) return moved;

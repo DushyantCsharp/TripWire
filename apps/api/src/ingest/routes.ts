@@ -10,6 +10,7 @@ import type { FastifyError, FastifyPluginCallback, FastifyReply, FastifyRequest 
 import { v7 as uuidv7 } from 'uuid';
 import type { z } from 'zod';
 import { problems, sendProblem, type FieldError } from '../problems.js';
+import { ingestMetrics } from '../telemetry.js';
 import type { IngestDeps } from './ports.js';
 import { verifySignature } from './signature.js';
 
@@ -38,8 +39,19 @@ interface LabelledAlert {
 export function webhookRoutes(deps: IngestDeps): FastifyPluginCallback {
   const now = deps.now ?? (() => new Date());
   const newId = deps.newId ?? (() => uuidv7());
+  const metrics = deps.metrics ?? ingestMetrics();
 
-  return (app, _options, done) => {
+  // Named: Fastify names an anonymous plugin after its source, and the request spans after that.
+  return function webhooks(app, _options, done) {
+    // Every webhook response, a refusal sent from onRequest included: the ack-latency target.
+    app.addHook('onResponse', (request, reply, next) => {
+      metrics.ackLatency.record(reply.elapsedTime / 1000, {
+        route: request.routeOptions.url ?? 'unknown',
+        status: String(reply.statusCode),
+      });
+      next();
+    });
+
     // Before the body is even read: shedding must cost as little as possible.
     app.addHook('onRequest', (_request, reply, next) => {
       const shed = deps.admission.check();
@@ -47,6 +59,7 @@ export function webhookRoutes(deps: IngestDeps): FastifyPluginCallback {
         next();
         return;
       }
+      metrics.shed.add(1, { reason: 'overloaded' });
       void sendProblem(
         reply,
         problems.overloaded(
@@ -152,6 +165,7 @@ export function webhookRoutes(deps: IngestDeps): FastifyPluginCallback {
     const claim = await deps.idempotency.claim(key.data, record);
     if (!claim.ok) {
       request.log.error({ err: claim.error }, 'idempotency store unavailable');
+      metrics.shed.add(1, { reason: 'idempotency_unavailable' });
       return sendProblem(reply, problems.overloaded('The idempotency store is unavailable.'), {
         'retry-after': DEPENDENCY_RETRY_AFTER_SECONDS,
       });
@@ -187,6 +201,7 @@ export function webhookRoutes(deps: IngestDeps): FastifyPluginCallback {
       request.log.error({ err: enqueued.error }, 'ingest queue unavailable');
       // Best effort: if the release fails too, the retry's re-enqueue (above) still recovers it.
       if (claim.value.claimed) await deps.idempotency.release(key.data);
+      metrics.shed.add(1, { reason: 'queue_unavailable' });
       return sendProblem(reply, problems.overloaded('The ingest queue is unavailable.'), {
         'retry-after': DEPENDENCY_RETRY_AFTER_SECONDS,
       });
