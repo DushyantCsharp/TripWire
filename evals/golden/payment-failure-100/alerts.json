@@ -1,0 +1,612 @@
+[
+  {
+    "receivedAt": "2026-10-13T19:33:44.744Z",
+    "body": {
+      "version": "4",
+      "groupKey": "{}:{alertname=\"DependencyErrors\"}",
+      "truncatedAlerts": 0,
+      "status": "firing",
+      "receiver": "tripwire",
+      "groupLabels": {
+        "alertname": "DependencyErrors"
+      },
+      "commonLabels": {
+        "alertname": "DependencyErrors",
+        "severity": "warning"
+      },
+      "commonAnnotations": {},
+      "externalURL": "http://alertmanager:9093",
+      "alerts": [
+        {
+          "status": "firing",
+          "labels": {
+            "alertname": "DependencyErrors",
+            "service": "frontend-proxy",
+            "service_name": "frontend-proxy",
+            "severity": "warning"
+          },
+          "annotations": {
+            "summary": "frontend-proxy sees 25m failed outbound calls per second"
+          },
+          "startsAt": "2026-10-13T19:31:55.112642862Z",
+          "endsAt": "0001-01-01T00:00:00Z",
+          "generatorURL": "http://alertmanager:9093/graph",
+          "fingerprint": "034c579b2530d1b6"
+        },
+        {
+          "status": "firing",
+          "labels": {
+            "alertname": "DependencyErrors",
+            "service": "frontend",
+            "service_name": "frontend",
+            "severity": "warning"
+          },
+          "annotations": {
+            "summary": "frontend sees 25m failed outbound calls per second"
+          },
+          "startsAt": "2026-10-13T19:31:55.112642862Z",
+          "endsAt": "0001-01-01T00:00:00Z",
+          "generatorURL": "http://alertmanager:9093/graph",
+          "fingerprint": "6196ef8db9e709e6"
+        },
+        {
+          "status": "firing",
+          "labels": {
+            "alertname": "DependencyErrors",
+            "service": "checkout",
+            "service_name": "checkout",
+            "severity": "warning"
+          },
+          "annotations": {
+            "summary": "checkout sees 25m failed outbound calls per second"
+          },
+          "startsAt": "2026-10-13T19:31:55.112642862Z",
+          "endsAt": "0001-01-01T00:00:00Z",
+          "generatorURL": "http://alertmanager:9093/graph",
+          "fingerprint": "8d98890ebad40b25"
+        }
+      ]
+    }
+  },
+  {
+    "receivedAt": "2026-10-13T19:33:44.744Z",
+    "body": {
+      "version": "4",
+      "groupKey": "{}:{alertname=\"HighErrorRate\"}",
+      "truncatedAlerts": 0,
+      "status": "firing",
+      "receiver": "tripwire",
+      "groupLabels": {
+        "alertname": "HighErrorRate"
+      },
+      "commonLabels": {
+        "alertname": "HighErrorRate",
+        "severity": "critical"
+      },
+      "commonAnnotations": {},
+      "externalURL": "http://alertmanager:9093",
+      "alerts": [
+        {
+          "status": "firing",
+          "labels": {
+            "alertname": "HighErrorRate",
+            "service": "payment",
+            "service_name": "payment",
+            "severity": "critical"
+          },
+          "annotations": {
+            "summary": "payment is failing 75% of the requests it serves"
+          },
+          "startsAt": "2026-10-13T19:31:55.112642862Z",
+          "endsAt": "0001-01-01T00:00:00Z",
+          "generatorURL": "http://alertmanager:9093/graph",
+          "fingerprint": "0e78396f788c5821"
+        },
+        {
+          "status": "firing",
+          "labels": {
+            "alertname": "HighErrorRate",
+            "service": "checkout",
+            "service_name": "checkout",
+            "severity": "critical"
+          },
+          "annotations": {
+            "summary": "checkout is failing 75% of the requests it serves"
+          },
+          "startsAt": "2026-10-13T19:31:55.112642862Z",
+          "endsAt": "0001-01-01T00:00:00Z",
+          "generatorURL": "http://alertmanager:9093/graph",
+          "fingerprint": "b69e9e10882ff2fe"
+        }
+      ]
+    }
+  },
+  {
+    "receivedAt": "2026-10-13T19:34:14.817Z",
+    "body": {
+      "version": "4",
+      "groupKey": "{}:{alertname=\"DependencyErrors\"}",
+      "truncatedAlerts": 0,
+      "status": "firing",
+      "receiver": "tripwire",
+      "groupLabels": {
+        "alertname": "DependencyErrors"
+      },
+      "commonLabels": {
+        "alertname": "DependencyErrors",
+        "severity": "warning"
+      },
+      "commonAnnotations": {},
+      "externalURL": "http://alertmanager:9093",
+      "alerts": [
+        {
+          "status": "firing",
+          "labels": {
+            "alertname": "DependencyErrors",
+            "service": "frontend-proxy",
+            "service_name": "frontend-proxy",
+            "severity": "warning"
+          },
+          "annotations": {
+            "summary": "frontend-proxy sees 25m failed outbound calls per second"
+          },
+          "startsAt": "2026-10-13T19:31:55.112642862Z",
+          "endsAt": "0001-01-01T00:00:00Z",
+          "generatorURL": "http://alertmanager:9093/graph",
+          "fingerprint": "034c579b2530d1b6"
+        },
+        {
+          "status": "firing",
+          "labels": {
+            "alertname": "DependencyErrors",
+            "service": "frontend",
+            "service_name": "frontend",
+            "severity": "warning"
+          },
+          "annotations": {
+            "summary": "frontend sees 25m failed outbound calls per second"
+          },
+          "startsAt": "2026-10-13T19:31:55.112642862Z",
+          "endsAt": "0001-01-01T00:00:00Z",
+          "generatorURL": "http://alertmanager:9093/graph",
+          "fingerprint": "6196ef8db9e709e6"
+        },
+        {
+          "status": "firing",
+          "labels": {
+            "alertname": "DependencyErrors",
+            "service": "checkout",
+            "service_name": "checkout",
+            "severity": "warning"
+          },
+          "annotations": {
+            "summary": "checkout sees 25m failed outbound calls per second"
+          },
+          "startsAt": "2026-10-13T19:31:55.112642862Z",
+          "endsAt": "0001-01-01T00:00:00Z",
+          "generatorURL": "http://alertmanager:9093/graph",
+          "fingerprint": "8d98890ebad40b25"
+        }
+      ]
+    }
+  },
+  {
+    "receivedAt": "2026-10-13T19:34:14.817Z",
+    "body": {
+      "version": "4",
+      "groupKey": "{}:{alertname=\"HighErrorRate\"}",
+      "truncatedAlerts": 0,
+      "status": "firing",
+      "receiver": "tripwire",
+      "groupLabels": {
+        "alertname": "HighErrorRate"
+      },
+      "commonLabels": {
+        "alertname": "HighErrorRate",
+        "severity": "critical"
+      },
+      "commonAnnotations": {},
+      "externalURL": "http://alertmanager:9093",
+      "alerts": [
+        {
+          "status": "firing",
+          "labels": {
+            "alertname": "HighErrorRate",
+            "service": "payment",
+            "service_name": "payment",
+            "severity": "critical"
+          },
+          "annotations": {
+            "summary": "payment is failing 75% of the requests it serves"
+          },
+          "startsAt": "2026-10-13T19:31:55.112642862Z",
+          "endsAt": "0001-01-01T00:00:00Z",
+          "generatorURL": "http://alertmanager:9093/graph",
+          "fingerprint": "0e78396f788c5821"
+        },
+        {
+          "status": "firing",
+          "labels": {
+            "alertname": "HighErrorRate",
+            "service": "checkout",
+            "service_name": "checkout",
+            "severity": "critical"
+          },
+          "annotations": {
+            "summary": "checkout is failing 75% of the requests it serves"
+          },
+          "startsAt": "2026-10-13T19:31:55.112642862Z",
+          "endsAt": "0001-01-01T00:00:00Z",
+          "generatorURL": "http://alertmanager:9093/graph",
+          "fingerprint": "b69e9e10882ff2fe"
+        }
+      ]
+    }
+  },
+  {
+    "receivedAt": "2026-10-13T19:34:44.852Z",
+    "body": {
+      "version": "4",
+      "groupKey": "{}:{alertname=\"DependencyErrors\"}",
+      "truncatedAlerts": 0,
+      "status": "firing",
+      "receiver": "tripwire",
+      "groupLabels": {
+        "alertname": "DependencyErrors"
+      },
+      "commonLabels": {
+        "alertname": "DependencyErrors",
+        "severity": "warning"
+      },
+      "commonAnnotations": {},
+      "externalURL": "http://alertmanager:9093",
+      "alerts": [
+        {
+          "status": "firing",
+          "labels": {
+            "alertname": "DependencyErrors",
+            "service": "frontend-proxy",
+            "service_name": "frontend-proxy",
+            "severity": "warning"
+          },
+          "annotations": {
+            "summary": "frontend-proxy sees 37.5m failed outbound calls per second"
+          },
+          "startsAt": "2026-10-13T19:31:55.112642862Z",
+          "endsAt": "0001-01-01T00:00:00Z",
+          "generatorURL": "http://alertmanager:9093/graph",
+          "fingerprint": "034c579b2530d1b6"
+        },
+        {
+          "status": "firing",
+          "labels": {
+            "alertname": "DependencyErrors",
+            "service": "frontend",
+            "service_name": "frontend",
+            "severity": "warning"
+          },
+          "annotations": {
+            "summary": "frontend sees 37.5m failed outbound calls per second"
+          },
+          "startsAt": "2026-10-13T19:31:55.112642862Z",
+          "endsAt": "0001-01-01T00:00:00Z",
+          "generatorURL": "http://alertmanager:9093/graph",
+          "fingerprint": "6196ef8db9e709e6"
+        },
+        {
+          "status": "firing",
+          "labels": {
+            "alertname": "DependencyErrors",
+            "service": "checkout",
+            "service_name": "checkout",
+            "severity": "warning"
+          },
+          "annotations": {
+            "summary": "checkout sees 37.5m failed outbound calls per second"
+          },
+          "startsAt": "2026-10-13T19:31:55.112642862Z",
+          "endsAt": "0001-01-01T00:00:00Z",
+          "generatorURL": "http://alertmanager:9093/graph",
+          "fingerprint": "8d98890ebad40b25"
+        }
+      ]
+    }
+  },
+  {
+    "receivedAt": "2026-10-13T19:34:44.852Z",
+    "body": {
+      "version": "4",
+      "groupKey": "{}:{alertname=\"HighErrorRate\"}",
+      "truncatedAlerts": 0,
+      "status": "firing",
+      "receiver": "tripwire",
+      "groupLabels": {
+        "alertname": "HighErrorRate"
+      },
+      "commonLabels": {
+        "alertname": "HighErrorRate",
+        "severity": "critical"
+      },
+      "commonAnnotations": {},
+      "externalURL": "http://alertmanager:9093",
+      "alerts": [
+        {
+          "status": "firing",
+          "labels": {
+            "alertname": "HighErrorRate",
+            "service": "payment",
+            "service_name": "payment",
+            "severity": "critical"
+          },
+          "annotations": {
+            "summary": "payment is failing 81.82% of the requests it serves"
+          },
+          "startsAt": "2026-10-13T19:31:55.112642862Z",
+          "endsAt": "0001-01-01T00:00:00Z",
+          "generatorURL": "http://alertmanager:9093/graph",
+          "fingerprint": "0e78396f788c5821"
+        },
+        {
+          "status": "firing",
+          "labels": {
+            "alertname": "HighErrorRate",
+            "service": "checkout",
+            "service_name": "checkout",
+            "severity": "critical"
+          },
+          "annotations": {
+            "summary": "checkout is failing 81.82% of the requests it serves"
+          },
+          "startsAt": "2026-10-13T19:31:55.112642862Z",
+          "endsAt": "0001-01-01T00:00:00Z",
+          "generatorURL": "http://alertmanager:9093/graph",
+          "fingerprint": "b69e9e10882ff2fe"
+        }
+      ]
+    }
+  },
+  {
+    "receivedAt": "2026-10-13T19:35:14.867Z",
+    "body": {
+      "version": "4",
+      "groupKey": "{}:{alertname=\"DependencyErrors\"}",
+      "truncatedAlerts": 0,
+      "status": "firing",
+      "receiver": "tripwire",
+      "groupLabels": {
+        "alertname": "DependencyErrors"
+      },
+      "commonLabels": {
+        "alertname": "DependencyErrors",
+        "severity": "warning"
+      },
+      "commonAnnotations": {},
+      "externalURL": "http://alertmanager:9093",
+      "alerts": [
+        {
+          "status": "firing",
+          "labels": {
+            "alertname": "DependencyErrors",
+            "service": "frontend-proxy",
+            "service_name": "frontend-proxy",
+            "severity": "warning"
+          },
+          "annotations": {
+            "summary": "frontend-proxy sees 37.5m failed outbound calls per second"
+          },
+          "startsAt": "2026-10-13T19:31:55.112642862Z",
+          "endsAt": "0001-01-01T00:00:00Z",
+          "generatorURL": "http://alertmanager:9093/graph",
+          "fingerprint": "034c579b2530d1b6"
+        },
+        {
+          "status": "firing",
+          "labels": {
+            "alertname": "DependencyErrors",
+            "service": "frontend",
+            "service_name": "frontend",
+            "severity": "warning"
+          },
+          "annotations": {
+            "summary": "frontend sees 37.5m failed outbound calls per second"
+          },
+          "startsAt": "2026-10-13T19:31:55.112642862Z",
+          "endsAt": "0001-01-01T00:00:00Z",
+          "generatorURL": "http://alertmanager:9093/graph",
+          "fingerprint": "6196ef8db9e709e6"
+        },
+        {
+          "status": "firing",
+          "labels": {
+            "alertname": "DependencyErrors",
+            "service": "checkout",
+            "service_name": "checkout",
+            "severity": "warning"
+          },
+          "annotations": {
+            "summary": "checkout sees 37.5m failed outbound calls per second"
+          },
+          "startsAt": "2026-10-13T19:31:55.112642862Z",
+          "endsAt": "0001-01-01T00:00:00Z",
+          "generatorURL": "http://alertmanager:9093/graph",
+          "fingerprint": "8d98890ebad40b25"
+        }
+      ]
+    }
+  },
+  {
+    "receivedAt": "2026-10-13T19:35:14.867Z",
+    "body": {
+      "version": "4",
+      "groupKey": "{}:{alertname=\"HighErrorRate\"}",
+      "truncatedAlerts": 0,
+      "status": "firing",
+      "receiver": "tripwire",
+      "groupLabels": {
+        "alertname": "HighErrorRate"
+      },
+      "commonLabels": {
+        "alertname": "HighErrorRate",
+        "severity": "critical"
+      },
+      "commonAnnotations": {},
+      "externalURL": "http://alertmanager:9093",
+      "alerts": [
+        {
+          "status": "firing",
+          "labels": {
+            "alertname": "HighErrorRate",
+            "service": "payment",
+            "service_name": "payment",
+            "severity": "critical"
+          },
+          "annotations": {
+            "summary": "payment is failing 81.82% of the requests it serves"
+          },
+          "startsAt": "2026-10-13T19:31:55.112642862Z",
+          "endsAt": "0001-01-01T00:00:00Z",
+          "generatorURL": "http://alertmanager:9093/graph",
+          "fingerprint": "0e78396f788c5821"
+        },
+        {
+          "status": "firing",
+          "labels": {
+            "alertname": "HighErrorRate",
+            "service": "checkout",
+            "service_name": "checkout",
+            "severity": "critical"
+          },
+          "annotations": {
+            "summary": "checkout is failing 81.82% of the requests it serves"
+          },
+          "startsAt": "2026-10-13T19:31:55.112642862Z",
+          "endsAt": "0001-01-01T00:00:00Z",
+          "generatorURL": "http://alertmanager:9093/graph",
+          "fingerprint": "b69e9e10882ff2fe"
+        }
+      ]
+    }
+  },
+  {
+    "receivedAt": "2026-10-13T19:35:44.886Z",
+    "body": {
+      "version": "4",
+      "groupKey": "{}:{alertname=\"DependencyErrors\"}",
+      "truncatedAlerts": 0,
+      "status": "firing",
+      "receiver": "tripwire",
+      "groupLabels": {
+        "alertname": "DependencyErrors"
+      },
+      "commonLabels": {
+        "alertname": "DependencyErrors",
+        "severity": "warning"
+      },
+      "commonAnnotations": {},
+      "externalURL": "http://alertmanager:9093",
+      "alerts": [
+        {
+          "status": "firing",
+          "labels": {
+            "alertname": "DependencyErrors",
+            "service": "frontend-proxy",
+            "service_name": "frontend-proxy",
+            "severity": "warning"
+          },
+          "annotations": {
+            "summary": "frontend-proxy sees 45.83m failed outbound calls per second"
+          },
+          "startsAt": "2026-10-13T19:31:55.112642862Z",
+          "endsAt": "0001-01-01T00:00:00Z",
+          "generatorURL": "http://alertmanager:9093/graph",
+          "fingerprint": "034c579b2530d1b6"
+        },
+        {
+          "status": "firing",
+          "labels": {
+            "alertname": "DependencyErrors",
+            "service": "frontend",
+            "service_name": "frontend",
+            "severity": "warning"
+          },
+          "annotations": {
+            "summary": "frontend sees 45.83m failed outbound calls per second"
+          },
+          "startsAt": "2026-10-13T19:31:55.112642862Z",
+          "endsAt": "0001-01-01T00:00:00Z",
+          "generatorURL": "http://alertmanager:9093/graph",
+          "fingerprint": "6196ef8db9e709e6"
+        },
+        {
+          "status": "firing",
+          "labels": {
+            "alertname": "DependencyErrors",
+            "service": "checkout",
+            "service_name": "checkout",
+            "severity": "warning"
+          },
+          "annotations": {
+            "summary": "checkout sees 45.83m failed outbound calls per second"
+          },
+          "startsAt": "2026-10-13T19:31:55.112642862Z",
+          "endsAt": "0001-01-01T00:00:00Z",
+          "generatorURL": "http://alertmanager:9093/graph",
+          "fingerprint": "8d98890ebad40b25"
+        }
+      ]
+    }
+  },
+  {
+    "receivedAt": "2026-10-13T19:35:44.886Z",
+    "body": {
+      "version": "4",
+      "groupKey": "{}:{alertname=\"HighErrorRate\"}",
+      "truncatedAlerts": 0,
+      "status": "firing",
+      "receiver": "tripwire",
+      "groupLabels": {
+        "alertname": "HighErrorRate"
+      },
+      "commonLabels": {
+        "alertname": "HighErrorRate",
+        "severity": "critical"
+      },
+      "commonAnnotations": {},
+      "externalURL": "http://alertmanager:9093",
+      "alerts": [
+        {
+          "status": "firing",
+          "labels": {
+            "alertname": "HighErrorRate",
+            "service": "payment",
+            "service_name": "payment",
+            "severity": "critical"
+          },
+          "annotations": {
+            "summary": "payment is failing 100% of the requests it serves"
+          },
+          "startsAt": "2026-10-13T19:31:55.112642862Z",
+          "endsAt": "0001-01-01T00:00:00Z",
+          "generatorURL": "http://alertmanager:9093/graph",
+          "fingerprint": "0e78396f788c5821"
+        },
+        {
+          "status": "firing",
+          "labels": {
+            "alertname": "HighErrorRate",
+            "service": "checkout",
+            "service_name": "checkout",
+            "severity": "critical"
+          },
+          "annotations": {
+            "summary": "checkout is failing 100% of the requests it serves"
+          },
+          "startsAt": "2026-10-13T19:31:55.112642862Z",
+          "endsAt": "0001-01-01T00:00:00Z",
+          "generatorURL": "http://alertmanager:9093/graph",
+          "fingerprint": "b69e9e10882ff2fe"
+        }
+      ]
+    }
+  }
+]
