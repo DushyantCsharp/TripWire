@@ -1,0 +1,23 @@
+[
+  {
+    "id": "deploy-shipping-3.7.0",
+    "service": "shipping",
+    "kind": "deploy",
+    "description": "shipping 3.7.0 rolled out",
+    "at": "2026-10-13T17:41:44.582Z"
+  },
+  {
+    "id": "deploy-recommendation-1.11.6",
+    "service": "recommendation",
+    "kind": "deploy",
+    "description": "recommendation 1.11.6 rolled out",
+    "at": "2026-10-13T14:58:44.582Z"
+  },
+  {
+    "id": "config-payment-2026-10-13T193044582Z",
+    "service": "payment",
+    "kind": "config",
+    "description": "payment: feature flag configuration updated",
+    "at": "2026-10-13T19:30:44.582Z"
+  }
+]
