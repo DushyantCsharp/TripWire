@@ -44,7 +44,7 @@ FROM deps AS console-build
 RUN pnpm turbo run build --filter=@tripwire/console...
 
 # What every image runs on, for the target platform.
-FROM gcr.io/distroless/nodejs22-debian13:nonroot@sha256:ec2313763dd43931543bd03830466e0c409ce73a487e8d46f10db72d3b816c1c AS runtime
+FROM gcr.io/distroless/nodejs22-debian13:nonroot@sha256:6c19627684167feb45e7ab0b4938e01a4922fc4abd9abd430df07606a6ab0e26 AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 # Numeric, so Kubernetes' runAsNonRoot can check it: distroless's nonroot user.
