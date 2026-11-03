@@ -6,7 +6,7 @@
 # Debian 13 as uid 65532 (nonroot), with no shell or package manager. CLAUDE.md "CI and release"
 # covers running them. Base images are pinned by digest; Dependabot proposes updates.
 
-FROM --platform=$BUILDPLATFORM node:22.23.3-bookworm-slim@sha256:c3de60bf2f9dd0ac6370e6117950ff62d6e339527e7472301c9c78a017978392 AS deps
+FROM --platform=$BUILDPLATFORM node:22.23.3-bookworm-slim@sha256:3ed98443660ff48413b5af19ecefce3b9d50845a901a43420d47cc63a9fddbe9 AS deps
 ENV CI=true \
     COREPACK_ENABLE_DOWNLOAD_PROMPT=0 \
     NEXT_TELEMETRY_DISABLED=1 \
@@ -44,7 +44,7 @@ FROM deps AS console-build
 RUN pnpm turbo run build --filter=@tripwire/console...
 
 # What every image runs on, for the target platform.
-FROM gcr.io/distroless/nodejs22-debian13:nonroot@sha256:ec2313763dd43931543bd03830466e0c409ce73a487e8d46f10db72d3b816c1c AS runtime
+FROM gcr.io/distroless/nodejs22-debian13:nonroot@sha256:8ad9cc935b7843c4024b7e1487b5ef472c354ea847b97c667023e2618552607e AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 # Numeric, so Kubernetes' runAsNonRoot can check it: distroless's nonroot user.
